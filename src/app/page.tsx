@@ -122,14 +122,19 @@ function OrderCard({ order, estado }: { order: Order; estado: FulfillmentFilter 
 function LoadingCards() {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-      {[1, 2, 3].map((i) => (
+      {[1, 2, 3, 4, 5, 6].map((i) => (
         <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-pulse">
-          <div className="px-4 py-3 bg-gray-50 border-b">
+          <div className="px-4 py-3 bg-gray-50 border-b flex justify-between">
+            <div className="h-6 bg-gray-200 rounded w-20"></div>
             <div className="h-6 bg-gray-200 rounded w-24"></div>
           </div>
           <div className="px-4 py-3 space-y-3">
             <div className="h-4 bg-gray-200 rounded w-3/4"></div>
             <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+            <div className="flex justify-between pt-2 border-t border-gray-100">
+              <div className="h-3 bg-gray-200 rounded w-24"></div>
+              <div className="h-6 bg-blue-100 rounded-full w-12"></div>
+            </div>
           </div>
         </div>
       ))}
@@ -137,10 +142,8 @@ function LoadingCards() {
   );
 }
 
-export default async function HomePage({ searchParams }: PageProps) {
-  const params = await searchParams;
-  const estado = (params.estado as FulfillmentFilter) || 'preparar';
-
+// Componente async que carga los pedidos
+async function OrdersList({ estado }: { estado: FulfillmentFilter }) {
   let orders: Order[] = [];
   let error: string | null = null;
 
@@ -152,50 +155,69 @@ export default async function HomePage({ searchParams }: PageProps) {
     console.error('Error fetching orders:', e);
   }
 
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+        <p className="text-red-800 font-medium text-sm">Error al cargar pedidos</p>
+        <p className="text-red-600 text-xs mt-1">{error}</p>
+      </div>
+    );
+  }
+
+  if (orders.length === 0) {
+    return (
+      <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
+        <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+        </svg>
+        <h3 className="mt-2 text-sm font-medium text-gray-900">No hay pedidos</h3>
+        <p className="mt-1 text-xs text-gray-500">No hay pedidos en este estado</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Contador de pedidos */}
+      <p className="text-xs text-gray-500 mb-3">{orders.length} pedido{orders.length !== 1 ? 's' : ''}</p>
+
+      {/* Grid de pedidos */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {orders.map((order) => (
+          <OrderCard key={order.id} order={order} estado={estado} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+export default async function HomePage({ searchParams }: PageProps) {
+  const params = await searchParams;
+  const estado = (params.estado as FulfillmentFilter) || 'preparar';
   const title = getTabTitle(estado);
 
   return (
     <div className="min-h-screen">
-      {/* Header sticky en mobile */}
+      {/* Header sticky - se muestra inmediatamente */}
       <div className="sticky top-0 z-10 bg-white border-b px-4 py-3 -mx-4 sm:-mx-6 lg:-mx-8">
         <div className="flex items-center justify-between mb-3">
           <div>
             <h2 className="text-lg font-bold text-gray-900">{title}</h2>
-            <p className="text-xs text-gray-500">{orders.length} pedido{orders.length !== 1 ? 's' : ''}</p>
           </div>
           <RefreshButton />
         </div>
 
-        {/* Pestañas */}
-        <Suspense fallback={<div className="h-10" />}>
+        {/* Pestañas - se muestran inmediatamente */}
+        <Suspense fallback={<div className="h-16" />}>
           <OrderTabs />
         </Suspense>
       </div>
 
+      {/* Lista de pedidos con Suspense - muestra skeleton mientras carga */}
       <div className="mt-4">
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
-            <p className="text-red-800 font-medium text-sm">Error al cargar pedidos</p>
-            <p className="text-red-600 text-xs mt-1">{error}</p>
-          </div>
-        )}
-
-        {!error && orders.length === 0 && (
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-            </svg>
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No hay pedidos</h3>
-            <p className="mt-1 text-xs text-gray-500">No hay pedidos en este estado</p>
-          </div>
-        )}
-
-        {/* Grid de pedidos */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {orders.map((order) => (
-            <OrderCard key={order.id} order={order} estado={estado} />
-          ))}
-        </div>
+        <Suspense fallback={<LoadingCards />}>
+          <OrdersList estado={estado} />
+        </Suspense>
       </div>
     </div>
   );

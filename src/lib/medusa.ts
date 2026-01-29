@@ -2,8 +2,13 @@ const MEDUSA_BACKEND_URL = process.env.MEDUSA_BACKEND_URL || 'https://backend.ma
 const MEDUSA_ADMIN_EMAIL = process.env.MEDUSA_ADMIN_EMAIL || '';
 const MEDUSA_ADMIN_PASSWORD = process.env.MEDUSA_ADMIN_PASSWORD || '';
 
-// Store the auth token in memory
+// Caché del token con expiración (50 minutos para ser conservadores, tokens suelen durar 1 hora)
+const TOKEN_CACHE_DURATION = 50 * 60 * 1000;
 let authToken: string | null = null;
+let tokenExpiry: number = 0;
+
+// Promise para evitar múltiples logins simultáneos
+let loginPromise: Promise<string> | null = null;
 
 interface MedusaRequestOptions {
   method?: string;
@@ -12,6 +17,9 @@ interface MedusaRequestOptions {
 
 // Login to get auth token
 async function login(): Promise<string> {
+  console.log('[Medusa Auth] 🔐 Iniciando login...');
+  const startTime = Date.now();
+
   const response = await fetch(`${MEDUSA_BACKEND_URL}/auth/user/emailpass`, {
     method: 'POST',
     headers: {
@@ -30,16 +38,33 @@ async function login(): Promise<string> {
   }
 
   const data = await response.json();
-  // MedusaJS v2 returns token in the response
+  console.log(`[Medusa Auth] ✅ Login exitoso en ${Date.now() - startTime}ms`);
+
+  // Guardar token y tiempo de expiración
+  authToken = data.token;
+  tokenExpiry = Date.now() + TOKEN_CACHE_DURATION;
+
   return data.token;
 }
 
-// Get auth token, login if needed
+// Get auth token, login if needed (con manejo de requests concurrentes)
 async function getAuthToken(): Promise<string> {
-  if (!authToken) {
-    authToken = await login();
+  // Si el token es válido, devolverlo inmediatamente
+  if (authToken && Date.now() < tokenExpiry) {
+    return authToken;
   }
-  return authToken;
+
+  // Si ya hay un login en proceso, esperar a que termine
+  if (loginPromise) {
+    return loginPromise;
+  }
+
+  // Iniciar nuevo login
+  loginPromise = login().finally(() => {
+    loginPromise = null;
+  });
+
+  return loginPromise;
 }
 
 export async function medusaRequest<T>(endpoint: string, options: MedusaRequestOptions = {}): Promise<T> {
@@ -225,12 +250,31 @@ const fulfillmentFilterMap: Record<FulfillmentFilter, string[]> = {
   enviados: ['shipped', 'partially_shipped'],
 };
 
+// Caché simple en memoria para pedidos (30 segundos)
+const ORDERS_CACHE_DURATION = 30 * 1000;
+interface OrdersCache {
+  data: OrdersResponse;
+  timestamp: number;
+  filter: string;
+}
+let ordersCache: OrdersCache | null = null;
+
 // Fetch paid orders - MedusaJS v2 API (optimizado para listado)
 export async function getPaidOrders(
   limit = 50,
   offset = 0,
   fulfillmentFilter?: FulfillmentFilter
 ): Promise<OrdersResponse> {
+  const cacheKey = `${fulfillmentFilter || 'all'}-${limit}-${offset}`;
+
+  // Verificar caché
+  if (ordersCache &&
+      ordersCache.filter === cacheKey &&
+      Date.now() - ordersCache.timestamp < ORDERS_CACHE_DURATION) {
+    console.log(`[getPaidOrders] ⚡ Usando caché (${ordersCache.data.orders.length} pedidos)`);
+    return ordersCache.data;
+  }
+
   console.log(`[getPaidOrders] 📋 Cargando pedidos (filtro: ${fulfillmentFilter || 'todos'})...`);
   const startTime = Date.now();
 
@@ -256,14 +300,29 @@ export async function getPaidOrders(
     });
   }
 
-  console.log(`[getPaidOrders] ✅ ${filteredOrders.length} pedidos (filtro: ${fulfillmentFilter || 'todos'}) - ${Date.now() - startTime}ms`);
-
-  return {
+  const result = {
     orders: filteredOrders,
     count: filteredOrders.length,
     offset: response.offset,
     limit: response.limit,
   } as OrdersResponse;
+
+  // Guardar en caché
+  ordersCache = {
+    data: result,
+    timestamp: Date.now(),
+    filter: cacheKey,
+  };
+
+  console.log(`[getPaidOrders] ✅ ${filteredOrders.length} pedidos (filtro: ${fulfillmentFilter || 'todos'}) - ${Date.now() - startTime}ms`);
+
+  return result;
+}
+
+// Función para invalidar el caché manualmente (por ejemplo, después de una acción)
+export function invalidateOrdersCache() {
+  ordersCache = null;
+  console.log('[getPaidOrders] 🗑️ Caché invalidado');
 }
 
 // Fetch single order by ID - MedusaJS v2 API (con todos los detalles)
