@@ -204,25 +204,16 @@ export interface OrderResponse {
   order: Order;
 }
 
-// Fetch paid orders - MedusaJS v2 API
+// Fetch paid orders - MedusaJS v2 API (optimizado para listado)
 export async function getPaidOrders(limit = 50, offset = 0): Promise<OrdersResponse> {
-  // MedusaJS v2 uses fields parameter with * prefix to include relations
+  // Solo traer los campos necesarios para el listado (sin items detallados)
   const response = await medusaRequest<{ orders: unknown[]; count: number; offset: number; limit: number }>(
-    `/admin/orders?limit=${limit}&offset=${offset}&fields=+items.*,+items.variant.*,+items.variant.product.*,+shipping_address.*,+customer.*`
+    `/admin/orders?limit=${limit}&offset=${offset}&fields=+shipping_address.*,+customer.*,+items.quantity`
   );
 
-  // Log para ver payment_status de todos los pedidos
+  // Filtrar solo pedidos con pago capturado (captured = pagado)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allOrders = response.orders as any[];
-  console.log('=== PAYMENT STATUS DE PEDIDOS ===');
-  allOrders.forEach((o: { display_id: number; payment_status: string; status: string }) => {
-    console.log(`Pedido #${o.display_id}: payment_status=${o.payment_status}, status=${o.status}`);
-  });
-  console.log('=== END PAYMENT STATUS ===');
-
-  // Filtrar solo pedidos con pago capturado (captured = pagado)
-  // authorized = no pagado, solo autorizado
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const paidOrders = allOrders.filter((order: any) => {
     const paymentStatus = order.payment_status?.toLowerCase();
     return paymentStatus === 'captured';
@@ -236,24 +227,10 @@ export async function getPaidOrders(limit = 50, offset = 0): Promise<OrdersRespo
   } as OrdersResponse;
 }
 
-// Fetch single order by ID - MedusaJS v2 API
+// Fetch single order by ID - MedusaJS v2 API (con todos los detalles)
 export async function getOrderById(orderId: string): Promise<OrderResponse> {
   const response = await medusaRequest<{ order: unknown }>(
     `/admin/orders/${orderId}?fields=+items.*,+items.variant.*,+items.variant.product.*,+shipping_address.*,+billing_address.*,+customer.*`
   );
-
-  // Log detallado para debug
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const order = response.order as any;
-  console.log('=== SINGLE ORDER STRUCTURE ===');
-  console.log('Order ID:', order?.id);
-  console.log('Items count:', order?.items?.length);
-  if (order?.items?.[0]) {
-    console.log('=== FIRST ITEM FIELDS ===');
-    console.log('All keys:', Object.keys(order.items[0]));
-    console.log('Full item:', JSON.stringify(order.items[0], null, 2));
-  }
-  console.log('=== END SINGLE ORDER ===');
-
   return response as unknown as OrderResponse;
 }
