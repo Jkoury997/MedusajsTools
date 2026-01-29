@@ -53,13 +53,13 @@ function getTabTitle(estado: FulfillmentFilter): string {
   return titles[estado] || 'Pedidos';
 }
 
-function OrderCard({ order }: { order: Order }) {
+function OrderCard({ order, estado }: { order: Order; estado: FulfillmentFilter }) {
   const fulfillmentBadge = getFulfillmentBadge(order.fulfillment_status || 'not_fulfilled');
   const items = order.items || [];
   const totalItems = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
 
   return (
-    <Link href={`/pedido/${order.id}`} className="block">
+    <Link href={`/pedido/${order.id}?from=${estado}`} className="block">
       <div className="bg-white rounded-xl shadow-sm active:shadow-md transition-all border border-gray-100 overflow-hidden">
         {/* Header con número de pedido y estado */}
         <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
@@ -167,7 +167,7 @@ export default async function HomePage({ searchParams }: PageProps) {
         </div>
 
         {/* Pestañas */}
-        <Suspense fallback={<div className="h-10" />}>
+        <Suspense fallback={<div className="h-10 mt-4" />}>
           <OrderTabs />
         </Suspense>
       </div>
@@ -193,7 +193,7 @@ export default async function HomePage({ searchParams }: PageProps) {
         {/* Grid de pedidos */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {orders.map((order) => (
-            <OrderCard key={order.id} order={order} />
+            <OrderCard key={order.id} order={order} estado={estado} />
           ))}
         </div>
       </div>

@@ -7,6 +7,7 @@ export const revalidate = 0;
 
 interface PageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ from?: string }>;
 }
 
 function formatDate(dateString: string): string {
@@ -195,13 +196,13 @@ function ItemCard({ item }: { item: LineItem }) {
   );
 }
 
-function OrderHeader({ order }: { order: Order }) {
+function OrderHeader({ order, backUrl }: { order: Order; backUrl: string }) {
   const totalItems = order.items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <div className="sticky top-0 z-10 bg-white border-b -mx-4 sm:-mx-6 lg:-mx-8 px-4 py-3 print:static print:border-0">
       <div className="flex items-center justify-between">
-        <Link href="/" className="text-gray-500 hover:text-gray-700 print:hidden">
+        <Link href={backUrl} className="text-gray-500 hover:text-gray-700 print:hidden">
           <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
@@ -335,8 +336,13 @@ function CustomerInfo({ order }: { order: Order }) {
   );
 }
 
-export default async function OrderDetailPage({ params }: PageProps) {
+export default async function OrderDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params;
+  const { from } = await searchParams;
+
+  // Construir URL de retorno con el estado
+  const backUrl = from ? `/?estado=${from}` : '/';
+
   let order: Order | null = null;
   let error: string | null = null;
 
@@ -358,7 +364,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
           <h1 className="text-lg font-bold text-red-800 mb-2">Error</h1>
           <p className="text-red-600 text-sm mb-4">{error || 'Pedido no encontrado'}</p>
           <Link
-            href="/"
+            href={backUrl}
             className="inline-flex items-center justify-center px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium"
           >
             ← Volver
@@ -370,7 +376,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen pb-6">
-      <OrderHeader order={order} />
+      <OrderHeader order={order} backUrl={backUrl} />
 
       <div className="mt-4">
         <CustomerInfo order={order} />
