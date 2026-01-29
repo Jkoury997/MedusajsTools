@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -13,8 +13,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sistema de Pickeo - Marcela Koury",
+  title: "Pickeo - Marcela Koury",
   description: "Sistema de pickeo para gestión de pedidos",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Pickeo MK",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({
@@ -25,19 +38,9 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-100`}
       >
-        <header className="bg-white shadow-sm print:hidden">
-          <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between">
-              <h1 className="text-2xl font-bold text-gray-900">
-                Sistema de Pickeo
-              </h1>
-              <span className="text-sm text-gray-500">Marcela Koury</span>
-            </div>
-          </div>
-        </header>
-        <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
+        <main className="max-w-lg mx-auto px-4 py-2 sm:max-w-2xl lg:max-w-4xl">
           {children}
         </main>
       </body>
