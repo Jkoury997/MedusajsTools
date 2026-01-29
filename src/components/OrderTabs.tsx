@@ -70,7 +70,7 @@ export default function OrderTabs({ counts }: OrderTabsProps) {
   };
 
   return (
-    <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1">
+    <div className="grid grid-cols-3 gap-2 mt-3">
       {tabs.map((tab) => {
         const isActive = currentTab === tab.id;
         const count = counts?.[tab.id];
@@ -79,12 +79,12 @@ export default function OrderTabs({ counts }: OrderTabsProps) {
           <Link
             key={tab.id}
             href={`/?estado=${tab.id}`}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors whitespace-nowrap ${getTabClasses(tab, isActive)}`}
+            className={`flex flex-col items-center justify-center px-2 py-2 rounded-lg border text-xs font-medium transition-colors ${getTabClasses(tab, isActive)}`}
           >
             {tab.icon}
-            <span>{tab.label}</span>
+            <span className="mt-1">{tab.label}</span>
             {count !== undefined && (
-              <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold ${
+              <span className={`mt-0.5 px-1.5 py-0.5 rounded-full text-xs font-bold ${
                 isActive ? 'bg-white/20' : 'bg-gray-100'
               }`}>
                 {count}

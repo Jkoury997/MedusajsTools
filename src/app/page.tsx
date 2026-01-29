@@ -167,7 +167,7 @@ export default async function HomePage({ searchParams }: PageProps) {
         </div>
 
         {/* Pestañas */}
-        <Suspense fallback={<div className="h-10 mt-4" />}>
+        <Suspense fallback={<div className="h-10" />}>
           <OrderTabs />
         </Suspense>
       </div>
