@@ -44,8 +44,13 @@ async function getAuthToken(): Promise<string> {
 
 export async function medusaRequest<T>(endpoint: string, options: MedusaRequestOptions = {}): Promise<T> {
   const { method = 'GET', body } = options;
+  const startTime = Date.now();
+
+  console.log(`[Medusa API] 🚀 ${method} ${endpoint}`);
 
   const token = await getAuthToken();
+  const tokenTime = Date.now();
+  console.log(`[Medusa API] 🔑 Token obtenido en ${tokenTime - startTime}ms`);
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -58,6 +63,9 @@ export async function medusaRequest<T>(endpoint: string, options: MedusaRequestO
     body: body ? JSON.stringify(body) : undefined,
     cache: 'no-store',
   });
+
+  const fetchTime = Date.now();
+  console.log(`[Medusa API] 📥 Response ${response.status} en ${fetchTime - tokenTime}ms (total: ${fetchTime - startTime}ms)`);
 
   // If unauthorized, try to login again
   if (response.status === 401) {
@@ -88,7 +96,7 @@ export async function medusaRequest<T>(endpoint: string, options: MedusaRequestO
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('Medusa API Error:', {
+    console.error('[Medusa API] ❌ Error:', {
       status: response.status,
       statusText: response.statusText,
       body: errorText,
@@ -97,7 +105,10 @@ export async function medusaRequest<T>(endpoint: string, options: MedusaRequestO
     throw new Error(`Medusa API error: ${response.status} ${response.statusText}`);
   }
 
-  return response.json();
+  const result = await response.json();
+  const endTime = Date.now();
+  console.log(`[Medusa API] ✅ Completado en ${endTime - startTime}ms total`);
+  return result;
 }
 
 // Types for MedusaJS v2 Orders
@@ -206,6 +217,9 @@ export interface OrderResponse {
 
 // Fetch paid orders - MedusaJS v2 API (optimizado para listado)
 export async function getPaidOrders(limit = 50, offset = 0): Promise<OrdersResponse> {
+  console.log('[getPaidOrders] 📋 Cargando listado de pedidos...');
+  const startTime = Date.now();
+
   // Solo traer los campos necesarios para el listado (sin items detallados)
   const response = await medusaRequest<{ orders: unknown[]; count: number; offset: number; limit: number }>(
     `/admin/orders?limit=${limit}&offset=${offset}&fields=+shipping_address.*,+customer.*,+items.quantity`
@@ -219,6 +233,8 @@ export async function getPaidOrders(limit = 50, offset = 0): Promise<OrdersRespo
     return paymentStatus === 'captured';
   });
 
+  console.log(`[getPaidOrders] ✅ ${allOrders.length} pedidos totales, ${paidOrders.length} pagados - ${Date.now() - startTime}ms`);
+
   return {
     orders: paidOrders,
     count: paidOrders.length,
@@ -229,8 +245,16 @@ export async function getPaidOrders(limit = 50, offset = 0): Promise<OrdersRespo
 
 // Fetch single order by ID - MedusaJS v2 API (con todos los detalles)
 export async function getOrderById(orderId: string): Promise<OrderResponse> {
+  console.log(`[getOrderById] 📦 Cargando pedido ${orderId}...`);
+  const startTime = Date.now();
+
   const response = await medusaRequest<{ order: unknown }>(
     `/admin/orders/${orderId}?fields=+items.*,+items.variant.*,+items.variant.product.*,+shipping_address.*,+billing_address.*,+customer.*`
   );
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const order = response.order as any;
+  console.log(`[getOrderById] ✅ Pedido #${order?.display_id} con ${order?.items?.length || 0} items - ${Date.now() - startTime}ms`);
+
   return response as unknown as OrderResponse;
 }
