@@ -30,6 +30,37 @@ function formatPrice(amount: number | undefined): string {
   }).format(amount);
 }
 
+// Mapeo de códigos de provincia Argentina
+function formatProvince(provinceCode: string): string {
+  const provinces: Record<string, string> = {
+    'ar-c': 'CABA',
+    'ar-b': 'Buenos Aires',
+    'ar-k': 'Catamarca',
+    'ar-h': 'Chaco',
+    'ar-u': 'Chubut',
+    'ar-x': 'Córdoba',
+    'ar-w': 'Corrientes',
+    'ar-e': 'Entre Ríos',
+    'ar-p': 'Formosa',
+    'ar-y': 'Jujuy',
+    'ar-l': 'La Pampa',
+    'ar-f': 'La Rioja',
+    'ar-m': 'Mendoza',
+    'ar-n': 'Misiones',
+    'ar-q': 'Neuquén',
+    'ar-r': 'Río Negro',
+    'ar-a': 'Salta',
+    'ar-j': 'San Juan',
+    'ar-d': 'San Luis',
+    'ar-z': 'Santa Cruz',
+    'ar-s': 'Santa Fe',
+    'ar-g': 'Santiago del Estero',
+    'ar-v': 'Tierra del Fuego',
+    'ar-t': 'Tucumán',
+  };
+  return provinces[provinceCode.toLowerCase()] || provinceCode;
+}
+
 // Extrae el código del producto (external_id del producto)
 function getItemCode(item: LineItem): string {
   if (item.variant?.product?.external_id) {
@@ -215,20 +246,36 @@ function CustomerInfo({ order }: { order: Order }) {
           </div>
         )}
 
-        {/* Dirección */}
+        {/* Dirección completa */}
         {order.shipping_address && (
-          <div className="flex items-start gap-2">
-            <svg className="w-4 h-4 text-gray-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          <div className="space-y-2 pt-2 border-t border-gray-200">
+            <div className="flex items-start gap-2">
+              <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <div className="text-sm text-gray-600">
+                <p className="font-medium text-gray-900">{order.shipping_address.address_1}</p>
+                {order.shipping_address.metadata?.floor && (
+                  <p>Piso: {order.shipping_address.metadata.floor}{order.shipping_address.metadata.apartment && ` - Depto: ${order.shipping_address.metadata.apartment}`}</p>
+                )}
+                <p>
+                  {order.shipping_address.city}
+                  {order.shipping_address.province && `, ${formatProvince(order.shipping_address.province)}`}
+                </p>
+                <p>CP: {order.shipping_address.postal_code}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* DNI */}
+        {order.shipping_address?.metadata?.dni && (
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
             </svg>
-            <span className="text-sm text-gray-600">
-              {order.shipping_address.address_1}
-              {order.shipping_address.address_2 && `, ${order.shipping_address.address_2}`}
-              {`, ${order.shipping_address.city}`}
-              {order.shipping_address.province && `, ${order.shipping_address.province}`}
-              {` (${order.shipping_address.postal_code})`}
-            </span>
+            <span className="text-sm text-gray-600">DNI: {order.shipping_address.metadata.dni}</span>
           </div>
         )}
 

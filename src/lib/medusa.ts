@@ -146,6 +146,14 @@ export interface LineItem {
   product_id?: string | null;
 }
 
+export interface AddressMetadata {
+  dni?: string;
+  floor?: string;
+  apartment?: string;
+  street_name?: string;
+  street_number?: string;
+}
+
 export interface Address {
   first_name: string;
   last_name: string;
@@ -156,6 +164,8 @@ export interface Address {
   postal_code: string;
   country_code: string;
   phone: string | null;
+  company?: string | null;
+  metadata?: AddressMetadata | null;
 }
 
 export interface Order {
