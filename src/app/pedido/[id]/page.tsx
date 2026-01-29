@@ -183,13 +183,14 @@ function getCustomerName(order: Order): string {
   if (order.shipping_address?.first_name) {
     return order.shipping_address.first_name;
   }
-  // Fallback al email
-  return order.email || 'Sin nombre';
+  // Fallback al email (puede estar en order.email o en customer.email)
+  return order.email || order.customer?.email || 'Sin nombre';
 }
 
 function CustomerInfo({ order }: { order: Order }) {
   const customerName = getCustomerName(order);
-  const showEmail = customerName !== order.email && order.email;
+  const email = order.email || order.customer?.email;
+  const showEmail = customerName !== email && email;
 
   return (
     <div className="bg-gray-50 rounded-xl p-4 mb-4">
@@ -210,7 +211,7 @@ function CustomerInfo({ order }: { order: Order }) {
             <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
-            <span className="text-sm text-gray-600 truncate">{order.email}</span>
+            <span className="text-sm text-gray-600 truncate">{email}</span>
           </div>
         )}
 
