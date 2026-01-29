@@ -1,9 +1,15 @@
 import Link from 'next/link';
-import { getPaidOrders, Order } from '@/lib/medusa';
+import { Suspense } from 'react';
+import { getPaidOrders, Order, FulfillmentFilter } from '@/lib/medusa';
 import RefreshButton from '@/components/RefreshButton';
+import OrderTabs from '@/components/OrderTabs';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+interface PageProps {
+  searchParams: Promise<{ estado?: string }>;
+}
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
@@ -36,6 +42,15 @@ function getFulfillmentBadge(status: string): { label: string; className: string
     canceled: { label: 'Cancelado', className: 'bg-gray-500 text-white' },
   };
   return statusMap[status] || { label: status || 'Pendiente', className: 'bg-gray-500 text-white' };
+}
+
+function getTabTitle(estado: FulfillmentFilter): string {
+  const titles: Record<FulfillmentFilter, string> = {
+    preparar: 'Para Preparar',
+    enviar: 'Para Enviar',
+    enviados: 'Enviados',
+  };
+  return titles[estado] || 'Pedidos';
 }
 
 function OrderCard({ order }: { order: Order }) {
@@ -104,53 +119,83 @@ function OrderCard({ order }: { order: Order }) {
   );
 }
 
-export default async function HomePage() {
+function LoadingCards() {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-pulse">
+          <div className="px-4 py-3 bg-gray-50 border-b">
+            <div className="h-6 bg-gray-200 rounded w-24"></div>
+          </div>
+          <div className="px-4 py-3 space-y-3">
+            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default async function HomePage({ searchParams }: PageProps) {
+  const params = await searchParams;
+  const estado = (params.estado as FulfillmentFilter) || 'preparar';
+
   let orders: Order[] = [];
   let error: string | null = null;
 
   try {
-    const response = await getPaidOrders();
+    const response = await getPaidOrders(50, 0, estado);
     orders = response.orders;
   } catch (e) {
     error = e instanceof Error ? e.message : 'Error al cargar los pedidos';
     console.error('Error fetching orders:', e);
   }
 
+  const title = getTabTitle(estado);
+
   return (
     <div className="min-h-screen">
       {/* Header sticky en mobile */}
-      <div className="sticky top-0 z-10 bg-white border-b px-4 py-3 mb-4 -mx-4 sm:-mx-6 lg:-mx-8">
-        <div className="flex items-center justify-between">
+      <div className="sticky top-0 z-10 bg-white border-b px-4 py-3 -mx-4 sm:-mx-6 lg:-mx-8">
+        <div className="flex items-center justify-between mb-3">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">Pedidos</h2>
-            <p className="text-xs text-gray-500">{orders.length} pedido{orders.length !== 1 ? 's' : ''} para preparar</p>
+            <h2 className="text-lg font-bold text-gray-900">{title}</h2>
+            <p className="text-xs text-gray-500">{orders.length} pedido{orders.length !== 1 ? 's' : ''}</p>
           </div>
           <RefreshButton />
         </div>
+
+        {/* Pestañas */}
+        <Suspense fallback={<div className="h-10" />}>
+          <OrderTabs />
+        </Suspense>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
-          <p className="text-red-800 font-medium text-sm">Error al cargar pedidos</p>
-          <p className="text-red-600 text-xs mt-1">{error}</p>
-        </div>
-      )}
+      <div className="mt-4">
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
+            <p className="text-red-800 font-medium text-sm">Error al cargar pedidos</p>
+            <p className="text-red-600 text-xs mt-1">{error}</p>
+          </div>
+        )}
 
-      {!error && orders.length === 0 && (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-          <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-          </svg>
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No hay pedidos</h3>
-          <p className="mt-1 text-xs text-gray-500">Los pedidos aparecerán aquí</p>
-        </div>
-      )}
+        {!error && orders.length === 0 && (
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
+            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+            </svg>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No hay pedidos</h3>
+            <p className="mt-1 text-xs text-gray-500">No hay pedidos en este estado</p>
+          </div>
+        )}
 
-      {/* Grid de pedidos - 1 columna en mobile, 2 en tablet, 3 en desktop */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {orders.map((order) => (
-          <OrderCard key={order.id} order={order} />
-        ))}
+        {/* Grid de pedidos */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {orders.map((order) => (
+            <OrderCard key={order.id} order={order} />
+          ))}
+        </div>
       </div>
     </div>
   );

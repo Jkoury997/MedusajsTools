@@ -215,9 +215,23 @@ export interface OrderResponse {
   order: Order;
 }
 
+// Tipos de filtro por estado de fulfillment
+export type FulfillmentFilter = 'preparar' | 'enviar' | 'enviados';
+
+// Mapeo de filtros a estados de fulfillment
+const fulfillmentFilterMap: Record<FulfillmentFilter, string[]> = {
+  preparar: ['not_fulfilled', 'partially_fulfilled'],
+  enviar: ['fulfilled'],
+  enviados: ['shipped', 'partially_shipped'],
+};
+
 // Fetch paid orders - MedusaJS v2 API (optimizado para listado)
-export async function getPaidOrders(limit = 50, offset = 0): Promise<OrdersResponse> {
-  console.log('[getPaidOrders] 📋 Cargando listado de pedidos...');
+export async function getPaidOrders(
+  limit = 50,
+  offset = 0,
+  fulfillmentFilter?: FulfillmentFilter
+): Promise<OrdersResponse> {
+  console.log(`[getPaidOrders] 📋 Cargando pedidos (filtro: ${fulfillmentFilter || 'todos'})...`);
   const startTime = Date.now();
 
   // Solo traer los campos necesarios para el listado (sin items detallados)
@@ -228,16 +242,25 @@ export async function getPaidOrders(limit = 50, offset = 0): Promise<OrdersRespo
   // Filtrar solo pedidos con pago capturado (captured = pagado)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allOrders = response.orders as any[];
-  const paidOrders = allOrders.filter((order: any) => {
+  let filteredOrders = allOrders.filter((order: any) => {
     const paymentStatus = order.payment_status?.toLowerCase();
     return paymentStatus === 'captured';
   });
 
-  console.log(`[getPaidOrders] ✅ ${allOrders.length} pedidos totales, ${paidOrders.length} pagados - ${Date.now() - startTime}ms`);
+  // Aplicar filtro de fulfillment si se especifica
+  if (fulfillmentFilter && fulfillmentFilterMap[fulfillmentFilter]) {
+    const validStatuses = fulfillmentFilterMap[fulfillmentFilter];
+    filteredOrders = filteredOrders.filter((order: any) => {
+      const status = order.fulfillment_status || 'not_fulfilled';
+      return validStatuses.includes(status);
+    });
+  }
+
+  console.log(`[getPaidOrders] ✅ ${filteredOrders.length} pedidos (filtro: ${fulfillmentFilter || 'todos'}) - ${Date.now() - startTime}ms`);
 
   return {
-    orders: paidOrders,
-    count: paidOrders.length,
+    orders: filteredOrders,
+    count: filteredOrders.length,
     offset: response.offset,
     limit: response.limit,
   } as OrdersResponse;
