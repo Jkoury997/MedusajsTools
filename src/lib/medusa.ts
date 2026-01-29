@@ -201,14 +201,29 @@ export async function getPaidOrders(limit = 50, offset = 0): Promise<OrdersRespo
     `/admin/orders?limit=${limit}&offset=${offset}&fields=+items.*,+items.variant.*,+items.variant.product.*,+shipping_address.*,+customer.*`
   );
 
-  // Log the first order to see the structure
-  if (response.orders && response.orders.length > 0) {
-    console.log('=== ORDER STRUCTURE ===');
-    console.log(JSON.stringify(response.orders[0], null, 2));
-    console.log('=== END ORDER ===');
-  }
+  // Log para ver payment_status de todos los pedidos
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allOrders = response.orders as any[];
+  console.log('=== PAYMENT STATUS DE PEDIDOS ===');
+  allOrders.forEach((o: { display_id: number; payment_status: string; status: string }) => {
+    console.log(`Pedido #${o.display_id}: payment_status=${o.payment_status}, status=${o.status}`);
+  });
+  console.log('=== END PAYMENT STATUS ===');
 
-  return response as unknown as OrdersResponse;
+  // Filtrar solo pedidos con pago capturado (captured = pagado)
+  // authorized = no pagado, solo autorizado
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const paidOrders = allOrders.filter((order: any) => {
+    const paymentStatus = order.payment_status?.toLowerCase();
+    return paymentStatus === 'captured';
+  });
+
+  return {
+    orders: paidOrders,
+    count: paidOrders.length,
+    offset: response.offset,
+    limit: response.limit,
+  } as OrdersResponse;
 }
 
 // Fetch single order by ID - MedusaJS v2 API
