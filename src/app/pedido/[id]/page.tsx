@@ -205,14 +205,11 @@ function ItemRowPrint({ item, index }: { item: LineItem; index: number }) {
 
   return (
     <tr className="border-b border-gray-300">
-      <td className="py-1 px-2 text-center font-bold">{item.quantity}</td>
-      <td className="py-1 px-2 font-mono font-bold text-xs">{code}</td>
       <td className="py-1 px-2 text-xs">{productName}</td>
-      <td className="py-1 px-2 text-xs text-center">{color || '-'}</td>
+      <td className="py-1 px-2 font-mono font-bold text-xs">{code}</td>
       <td className="py-1 px-2 text-xs text-center">{size || '-'}</td>
-      <td className="py-1 px-2 text-center">
-        <span className="inline-block w-4 h-4 border border-gray-400"></span>
-      </td>
+      <td className="py-1 px-2 text-xs text-center">{color || '-'}</td>
+      <td className="py-1 px-2 text-center font-bold">{item.quantity}</td>
     </tr>
   );
 }
@@ -462,12 +459,11 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
           <table className="w-full text-xs border-collapse border border-gray-400">
             <thead>
               <tr className="bg-gray-100">
-                <th className="py-1 px-2 border border-gray-400 w-10">Cant</th>
+                <th className="py-1 px-2 border border-gray-400">Nombre</th>
                 <th className="py-1 px-2 border border-gray-400 w-20">Código</th>
-                <th className="py-1 px-2 border border-gray-400">Producto</th>
-                <th className="py-1 px-2 border border-gray-400 w-16">Color</th>
                 <th className="py-1 px-2 border border-gray-400 w-12">Talle</th>
-                <th className="py-1 px-2 border border-gray-400 w-8">✓</th>
+                <th className="py-1 px-2 border border-gray-400 w-16">Color</th>
+                <th className="py-1 px-2 border border-gray-400 w-10">Cant</th>
               </tr>
             </thead>
             <tbody>
