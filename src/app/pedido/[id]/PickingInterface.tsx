@@ -1,6 +1,68 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+
+// === FEEDBACK: Sonido + Vibración ===
+function usePickingFeedback() {
+  const audioCtx = useRef<AudioContext | null>(null);
+
+  const getAudioCtx = useCallback(() => {
+    if (!audioCtx.current) {
+      audioCtx.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    return audioCtx.current;
+  }, []);
+
+  const playTone = useCallback((frequency: number, duration: number, type: OscillatorType = 'sine') => {
+    try {
+      const ctx = getAudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = type;
+      osc.frequency.value = frequency;
+      gain.gain.value = 0.3;
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + duration);
+    } catch {
+      // Audio no disponible
+    }
+  }, [getAudioCtx]);
+
+  const vibrate = useCallback((pattern: number | number[]) => {
+    try {
+      if (navigator.vibrate) navigator.vibrate(pattern);
+    } catch {
+      // Vibración no disponible
+    }
+  }, []);
+
+  const successFeedback = useCallback(() => {
+    // Beep agudo doble (éxito)
+    playTone(880, 0.1);
+    setTimeout(() => playTone(1320, 0.15), 100);
+    vibrate(100);
+  }, [playTone, vibrate]);
+
+  const errorFeedback = useCallback(() => {
+    // Buzz grave (error)
+    playTone(200, 0.3, 'square');
+    vibrate([100, 50, 100, 50, 200]);
+  }, [playTone, vibrate]);
+
+  const completeFeedback = useCallback(() => {
+    // Melodía de completado
+    playTone(523, 0.1);
+    setTimeout(() => playTone(659, 0.1), 120);
+    setTimeout(() => playTone(784, 0.1), 240);
+    setTimeout(() => playTone(1047, 0.2), 360);
+    vibrate([100, 50, 100, 50, 300]);
+  }, [playTone, vibrate]);
+
+  return { successFeedback, errorFeedback, completeFeedback };
+}
 
 interface PickingItem {
   lineItemId: string;
@@ -47,6 +109,7 @@ interface CompletionResult {
   userName: string;
   fulfillmentCreated: boolean;
   fulfillmentError?: string;
+  packed?: boolean;
 }
 
 interface PickingInterfaceProps {
@@ -93,6 +156,19 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
   // Completion
   const [completing, setCompleting] = useState(false);
   const [completionResult, setCompletionResult] = useState<CompletionResult | null>(null);
+
+  // Packing (listo para enviar)
+  const [packing, setPacking] = useState(false);
+  const [packed, setPacked] = useState(false);
+
+  // Cancel con razón obligatoria
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState('');
+
+  // Feedback sonido + vibración
+  const { successFeedback, errorFeedback, completeFeedback } = usePickingFeedback();
 
   // Timer
   useEffect(() => {
@@ -208,16 +284,19 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
 
       if (data.success) {
         setSession(prev => prev ? { ...prev, ...data.session } : prev);
+        successFeedback();
       } else {
         setPickError(data.error);
+        errorFeedback();
         setTimeout(() => setPickError(''), 3000);
       }
     } catch {
       setPickError('Error de conexión');
+      errorFeedback();
     } finally {
       setActionLoading(null);
     }
-  }, [actionLoading, orderId]);
+  }, [actionLoading, orderId, successFeedback, errorFeedback]);
 
   // Unpick -1
   const handleUnpick = useCallback(async (lineItemId: string) => {
@@ -264,12 +343,15 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
       if (data.success) {
         setSession(prev => prev ? { ...prev, ...data.session } : prev);
         setBarcodeInput('');
+        successFeedback();
       } else {
         setPickError(data.error);
+        errorFeedback();
         setTimeout(() => setPickError(''), 3000);
       }
     } catch {
       setPickError('Error de conexión');
+      errorFeedback();
     } finally {
       setActionLoading(null);
       barcodeRef.current?.focus();
@@ -291,6 +373,7 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
       const data = await res.json();
 
       if (data.success) {
+        completeFeedback();
         setCompletionResult({
           durationFormatted: data.durationFormatted,
           userName: data.userName,
@@ -300,6 +383,7 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
         setStep('completed');
       } else {
         setPickError(data.error);
+        errorFeedback();
       }
     } catch {
       setPickError('Error al completar');
@@ -308,19 +392,67 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
     }
   }
 
-  // Cancel session
-  async function handleCancel() {
-    if (!confirm('¿Cancelar el picking de este pedido?')) return;
+  // Cancel session - abre modal para pedir razón
+  function handleCancelClick() {
+    setCancelReason('');
+    setCancelError('');
+    setShowCancelModal(true);
+  }
+
+  async function handleCancelConfirm() {
+    const reason = cancelReason.trim();
+    if (reason.length < 3) {
+      setCancelError('Escribí una razón (mínimo 3 caracteres)');
+      return;
+    }
+
+    setCancelling(true);
+    setCancelError('');
 
     try {
-      await fetch(`/api/picking/session/${orderId}`, { method: 'DELETE' });
-      setSession(null);
-      setStep('idle');
-      setPickerPin('');
-      setUserId('');
-      setElapsed(0);
+      const res = await fetch(`/api/picking/session/${orderId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setShowCancelModal(false);
+        setSession(null);
+        setStep('idle');
+        setPickerPin('');
+        setUserId('');
+        setElapsed(0);
+      } else {
+        setCancelError(data.error || 'Error al cancelar');
+      }
     } catch {
-      setPickError('Error al cancelar');
+      setCancelError('Error de conexión');
+    } finally {
+      setCancelling(false);
+    }
+  }
+
+  // Marcar como empaquetado / listo para enviar
+  async function handlePack() {
+    if (packing || packed) return;
+    setPacking(true);
+    try {
+      const res = await fetch(`/api/picking/session/${orderId}/pack`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPacked(true);
+        successFeedback();
+      }
+    } catch {
+      // Silenciar
+    } finally {
+      setPacking(false);
     }
   }
 
@@ -412,10 +544,10 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
     );
   }
 
-  // === COMPLETED: Resumen final ===
+  // === COMPLETED: Resumen final + botón listo para enviar ===
   if (step === 'completed' && completionResult) {
     return (
-      <div className="print:hidden mt-4">
+      <div className="print:hidden mt-4 space-y-3">
         <div className="bg-green-50 border-2 border-green-200 rounded-xl p-6 text-center">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
             <svg className="w-9 h-9 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -451,6 +583,41 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
             </div>
           )}
         </div>
+
+        {/* Botón Listo para Enviar */}
+        {packed || completionResult.packed ? (
+          <div className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-4 text-center">
+            <div className="flex items-center justify-center gap-2">
+              <svg className="w-6 h-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              </svg>
+              <span className="text-indigo-800 font-bold text-lg">Listo para enviar</span>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={handlePack}
+            disabled={packing}
+            className="w-full bg-indigo-600 text-white py-4 rounded-xl text-lg font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-colors shadow-lg disabled:opacity-50"
+          >
+            {packing ? (
+              <>
+                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Marcando...
+              </>
+            ) : (
+              <>
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                </svg>
+                Listo para Enviar
+              </>
+            )}
+          </button>
+        )}
       </div>
     );
   }
@@ -651,12 +818,69 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
 
         {/* Cancel */}
         <button
-          onClick={handleCancel}
+          onClick={handleCancelClick}
           className="w-full py-2 text-sm text-red-500 hover:text-red-700 font-medium"
         >
           Cancelar picking
         </button>
       </div>
+
+      {/* Modal de cancelación con razón obligatoria */}
+      {showCancelModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
+            <div className="p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Cancelar Picking</h3>
+                  <p className="text-sm text-gray-500">Pedido #{orderDisplayId}</p>
+                </div>
+              </div>
+
+              <p className="text-sm text-gray-700 mb-3">
+                Escribí el motivo de la cancelación:
+              </p>
+
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Ej: Producto sin stock, error en el pedido..."
+                rows={3}
+                autoFocus
+                className="w-full px-3 py-2 border-2 rounded-xl text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none"
+              />
+
+              {cancelError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-2 mt-2">
+                  <span className="text-red-700 text-xs">{cancelError}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex border-t">
+              <button
+                onClick={() => setShowCancelModal(false)}
+                disabled={cancelling}
+                className="flex-1 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 border-r"
+              >
+                Volver
+              </button>
+              <button
+                onClick={handleCancelConfirm}
+                disabled={cancelling || cancelReason.trim().length < 3}
+                className="flex-1 py-3 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-40"
+              >
+                {cancelling ? 'Cancelando...' : 'Confirmar Cancelación'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

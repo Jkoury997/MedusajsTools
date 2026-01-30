@@ -158,15 +158,35 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   }
 }
 
-// DELETE /api/picking/session/:orderId - Cancelar sesión
+// DELETE /api/picking/session/:orderId - Cancelar sesión (requiere razón)
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
   try {
     await connectDB();
     const { orderId } = await params;
 
+    // Leer razón del body
+    let reason = '';
+    try {
+      const body = await req.json();
+      reason = body.reason?.trim() || '';
+    } catch {
+      // body vacío
+    }
+
+    if (!reason || reason.length < 3) {
+      return NextResponse.json(
+        { success: false, error: 'Tenés que poner una razón para cancelar (mínimo 3 caracteres)' },
+        { status: 400 }
+      );
+    }
+
     const session = await PickingSession.findOneAndUpdate(
       { orderId, status: 'in_progress' },
-      { status: 'cancelled' },
+      {
+        status: 'cancelled',
+        cancelReason: reason,
+        cancelledAt: new Date(),
+      },
       { new: true }
     );
 

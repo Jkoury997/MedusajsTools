@@ -42,6 +42,13 @@ export interface IPickingSession extends Document {
   startedAt: Date;
   completedAt?: Date;
   durationSeconds?: number;
+  // Empaque
+  packed: boolean;
+  packedAt?: Date;
+  packedByName?: string;
+  // Cancelación
+  cancelReason?: string;
+  cancelledAt?: Date;
   // Usuario
   userId: mongoose.Types.ObjectId;
   userName: string;
@@ -82,6 +89,13 @@ const PickingSessionSchema = new Schema<IPickingSession>(
     startedAt: { type: Date, default: Date.now },
     completedAt: { type: Date },
     durationSeconds: { type: Number },
+    // Empaque
+    packed: { type: Boolean, default: false },
+    packedAt: { type: Date },
+    packedByName: { type: String },
+    // Cancelación
+    cancelReason: { type: String },
+    cancelledAt: { type: Date },
     // Usuario
     userId: { type: Schema.Types.ObjectId, ref: 'PickingUser', required: true, index: true },
     userName: { type: String, required: true },
