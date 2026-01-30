@@ -77,8 +77,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       const order = orderData.order;
 
       // Crear fulfillment en Medusa
-      // MedusaJS v2 usa createFulfillment en el admin API
-      await medusaRequest(`/admin/orders/${orderId}/fulfillment`, {
+      // MedusaJS v2 endpoint: POST /admin/orders/:id/fulfillments (plural)
+      await medusaRequest(`/admin/orders/${orderId}/fulfillments`, {
         method: 'POST',
         body: {
           items: order.items.map((item: any) => ({
