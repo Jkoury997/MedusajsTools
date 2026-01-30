@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getOrderById, Order, LineItem } from '@/lib/medusa';
 import PrintButton from './PrintButton';
+import PickingInterface from './PickingInterface';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -121,81 +122,6 @@ function getItemSize(item: LineItem): string | null {
   return item.variant?.metadata?.size || null;
 }
 
-// Obtiene el SKU de la variante
-function getItemSku(item: LineItem): string | null {
-  return item.variant?.sku || null;
-}
-
-// Obtiene la imagen del producto
-function getItemThumbnail(item: LineItem): string | null {
-  return item.variant?.product?.thumbnail || item.variant?.thumbnail || item.thumbnail || null;
-}
-
-// Componente de item para mobile (card) - CON imagen
-function ItemCard({ item }: { item: LineItem }) {
-  const code = getItemCode(item);
-  const productName = getProductName(item);
-  const color = getItemColor(item);
-  const size = getItemSize(item);
-  const sku = getItemSku(item);
-  const thumbnail = getItemThumbnail(item);
-
-  return (
-    <div className="bg-white border-b last:border-b-0 p-4 print:hidden">
-      <div className="flex gap-3">
-        {/* Imagen */}
-        {thumbnail && (
-          <img
-            src={thumbnail}
-            alt={productName}
-            className="w-16 h-16 object-cover rounded-lg border flex-shrink-0"
-          />
-        )}
-
-        {/* Info del producto */}
-        <div className="flex-1 min-w-0">
-          {/* Código y cantidad en la misma línea */}
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-lg font-bold text-blue-600">{code}</span>
-            <div className="flex items-center gap-2">
-              <span className="bg-green-500 text-white text-lg font-bold w-10 h-10 rounded-full flex items-center justify-center">
-                {item.quantity}
-              </span>
-              <input
-                type="checkbox"
-                className="w-7 h-7 rounded-lg border-2 border-gray-300 text-green-600 focus:ring-green-500"
-                aria-label={`Marcar ${productName} como pickeado`}
-              />
-            </div>
-          </div>
-
-          {/* Nombre del producto */}
-          <p className="text-sm font-medium text-gray-900 line-clamp-2 mb-2">{productName}</p>
-
-          {/* SKU */}
-          {sku && (
-            <p className="text-xs text-gray-500 mb-2">SKU: {sku}</p>
-          )}
-
-          {/* Color y Talle */}
-          <div className="flex flex-wrap gap-2">
-            {color && (
-              <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 text-gray-800">
-                {color}
-              </span>
-            )}
-            {size && (
-              <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-100 text-blue-800">
-                Talle {size}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // Componente de item compacto para IMPRESIÓN - SIN imagen
 function ItemRowPrint({ item, index }: { item: LineItem; index: number }) {
   const code = getItemCode(item);
@@ -295,20 +221,25 @@ function CustomerInfo({ order }: { order: Order }) {
 
   return (
     <>
-      {/* Info cliente para pantalla */}
-      <div className="bg-gray-50 rounded-xl p-4 mb-4 print:hidden">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Cliente</h3>
-
-        <div className="space-y-2">
-          {/* Nombre */}
-          <div className="flex items-center gap-2">
-            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      {/* Info cliente para pantalla - Acordeón colapsado */}
+      <details className="bg-gray-50 rounded-xl mb-4 print:hidden group">
+        <summary className="flex items-center justify-between px-4 py-3 cursor-pointer list-none">
+          <div className="flex items-center gap-2 min-w-0">
+            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
-            <span className="text-sm font-medium text-gray-900">{customerName}</span>
+            <span className="text-sm font-medium text-gray-900 truncate">{customerName}</span>
+            {order.shipping_address?.phone && (
+              <span className="text-xs text-gray-500 hidden sm:inline">· {order.shipping_address.phone}</span>
+            )}
           </div>
+          <svg className="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </summary>
 
-          {/* Email - solo si es diferente al nombre */}
+        <div className="px-4 pb-4 space-y-2 border-t border-gray-200 pt-3">
+          {/* Email */}
           {showEmail && (
             <div className="flex items-center gap-2">
               <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -318,25 +249,23 @@ function CustomerInfo({ order }: { order: Order }) {
             </div>
           )}
 
-          {/* Dirección completa */}
+          {/* Dirección */}
           {order.shipping_address && (
-            <div className="space-y-2 pt-2 border-t border-gray-200">
-              <div className="flex items-start gap-2">
-                <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <div className="text-sm text-gray-600">
-                  <p className="font-medium text-gray-900">{order.shipping_address.address_1}</p>
-                  {order.shipping_address.metadata?.floor && (
-                    <p>Piso: {order.shipping_address.metadata.floor}{order.shipping_address.metadata.apartment && ` - Depto: ${order.shipping_address.metadata.apartment}`}</p>
-                  )}
-                  <p>
-                    {order.shipping_address.city}
-                    {order.shipping_address.province && `, ${formatProvince(order.shipping_address.province)}`}
-                  </p>
-                  <p>CP: {order.shipping_address.postal_code}</p>
-                </div>
+            <div className="flex items-start gap-2">
+              <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <div className="text-sm text-gray-600">
+                <p className="font-medium text-gray-900">{order.shipping_address.address_1}</p>
+                {order.shipping_address.metadata?.floor && (
+                  <p>Piso: {order.shipping_address.metadata.floor}{order.shipping_address.metadata.apartment && ` - Depto: ${order.shipping_address.metadata.apartment}`}</p>
+                )}
+                <p>
+                  {order.shipping_address.city}
+                  {order.shipping_address.province && `, ${formatProvince(order.shipping_address.province)}`}
+                </p>
+                <p>CP: {order.shipping_address.postal_code}</p>
               </div>
             </div>
           )}
@@ -368,7 +297,7 @@ function CustomerInfo({ order }: { order: Order }) {
             </div>
           )}
         </div>
-      </div>
+      </details>
 
       {/* Info cliente compacta para IMPRESIÓN */}
       <div className="hidden print:block text-xs border border-gray-400 p-2 mb-2">
@@ -439,21 +368,6 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
       <div className="mt-4">
         <CustomerInfo order={order} />
 
-        {/* Lista de artículos - Vista Mobile/Desktop */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden border print:hidden">
-          <div className="px-4 py-3 bg-gray-50 border-b">
-            <h2 className="text-sm font-semibold text-gray-900">
-              Artículos para Pickeo
-            </h2>
-          </div>
-
-          <div className="divide-y divide-gray-100">
-            {order.items.map((item) => (
-              <ItemCard key={item.id} item={item} />
-            ))}
-          </div>
-        </div>
-
         {/* Lista de artículos - Vista IMPRESIÓN (tabla compacta) */}
         <div className="hidden print:block">
           <table className="w-full text-xs border-collapse border border-gray-400">
@@ -473,6 +387,14 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
             </tbody>
           </table>
         </div>
+
+        {/* Picking Interface */}
+        <PickingInterface
+          orderId={order.id}
+          orderDisplayId={order.display_id}
+          orderItems={order.items}
+          fulfillmentStatus={order.fulfillment_status || 'not_fulfilled'}
+        />
       </div>
 
       {/* Print Footer */}

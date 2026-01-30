@@ -3,6 +3,8 @@ import { Suspense } from 'react';
 import { getPaidOrders, Order, FulfillmentFilter } from '@/lib/medusa';
 import RefreshButton from '@/components/RefreshButton';
 import OrderTabs from '@/components/OrderTabs';
+import { connectDB } from '@/lib/mongodb/connection';
+import { PickingSession } from '@/lib/mongodb/models';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -53,14 +55,22 @@ function getTabTitle(estado: FulfillmentFilter): string {
   return titles[estado] || 'Pedidos';
 }
 
-function OrderCard({ order, estado }: { order: Order; estado: FulfillmentFilter }) {
+interface PickingInfo {
+  userName: string;
+  status: string;
+  progressPercent: number;
+}
+
+function OrderCard({ order, estado, pickingInfo }: { order: Order; estado: FulfillmentFilter; pickingInfo?: PickingInfo }) {
   const fulfillmentBadge = getFulfillmentBadge(order.fulfillment_status || 'not_fulfilled');
   const items = order.items || [];
   const totalItems = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
 
   return (
     <Link href={`/pedido/${order.id}?from=${estado}`} className="block">
-      <div className="bg-white rounded-xl shadow-sm active:shadow-md transition-all border border-gray-100 overflow-hidden">
+      <div className={`bg-white rounded-xl shadow-sm active:shadow-md transition-all border overflow-hidden ${
+        pickingInfo?.status === 'in_progress' ? 'border-blue-300 ring-1 ring-blue-200' : 'border-gray-100'
+      }`}>
         {/* Header con número de pedido y estado */}
         <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
           <div className="flex items-center gap-2">
@@ -73,6 +83,25 @@ function OrderCard({ order, estado }: { order: Order; estado: FulfillmentFilter 
             {formatPrice(order.total)}
           </span>
         </div>
+
+        {/* Picking en curso */}
+        {pickingInfo?.status === 'in_progress' && (
+          <div className="px-4 py-2 bg-blue-50 border-b border-blue-100">
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                {pickingInfo.userName.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-xs font-semibold text-blue-700">Armando: {pickingInfo.userName}</span>
+            </div>
+            <div className="bg-blue-200 rounded-full h-1.5 overflow-hidden">
+              <div
+                className="bg-blue-600 h-full rounded-full transition-all"
+                style={{ width: `${pickingInfo.progressPercent}%` }}
+              />
+            </div>
+            <span className="text-[10px] text-blue-500 mt-0.5 block">{pickingInfo.progressPercent}% completado</span>
+          </div>
+        )}
 
         {/* Contenido principal */}
         <div className="px-4 py-3">
@@ -142,14 +171,46 @@ function LoadingCards() {
   );
 }
 
+// Obtener sesiones de picking activas
+async function getActivePickingSessions(): Promise<Record<string, PickingInfo>> {
+  try {
+    await connectDB();
+    const sessions = await PickingSession.find({ status: 'in_progress' })
+      .select('orderId userName status totalRequired totalPicked')
+      .lean();
+
+    const map: Record<string, PickingInfo> = {};
+    for (const s of sessions) {
+      const totalRequired = s.totalRequired || 0;
+      const totalPicked = s.totalPicked || 0;
+      map[s.orderId] = {
+        userName: s.userName,
+        status: s.status,
+        progressPercent: totalRequired > 0 ? Math.round((totalPicked / totalRequired) * 100) : 0,
+      };
+    }
+    return map;
+  } catch (err) {
+    console.error('[PickingSessions] Error:', err);
+    return {};
+  }
+}
+
 // Componente async que carga los pedidos
 async function OrdersList({ estado }: { estado: FulfillmentFilter }) {
   let orders: Order[] = [];
   let error: string | null = null;
 
+  // Cargar pedidos y sesiones de picking en paralelo
+  let pickingMap: Record<string, PickingInfo> = {};
+
   try {
-    const response = await getPaidOrders(50, 0, estado);
+    const [response, sessions] = await Promise.all([
+      getPaidOrders(50, 0, estado),
+      getActivePickingSessions(),
+    ]);
     orders = response.orders;
+    pickingMap = sessions;
   } catch (e) {
     error = e instanceof Error ? e.message : 'Error al cargar los pedidos';
     console.error('Error fetching orders:', e);
@@ -184,7 +245,7 @@ async function OrdersList({ estado }: { estado: FulfillmentFilter }) {
       {/* Grid de pedidos */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {orders.map((order) => (
-          <OrderCard key={order.id} order={order} estado={estado} />
+          <OrderCard key={order.id} order={order} estado={estado} pickingInfo={pickingMap[order.id]} />
         ))}
       </div>
     </>
