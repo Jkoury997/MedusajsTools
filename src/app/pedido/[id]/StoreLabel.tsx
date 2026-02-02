@@ -59,122 +59,91 @@ export default function StoreLabel({ orderDisplayId, customerName, customerPhone
       day: '2-digit', month: '2-digit', year: 'numeric',
     });
 
-    // Etiqueta Zebra 100mm x 150mm — DEBE entrar en UNA sola etiqueta
-    // IMPORTANTE: En el diálogo de impresión de Chrome seleccionar:
-    //   Tamaño de papel: 100x150mm  |  Márgenes: Ninguno  |  Escala: 100%
+    // Etiqueta Zebra 100mm ancho x 150mm alto
+    // Chrome: Tamaño papel 100x150 | Márgenes Ninguno | Escala 100%
     const html = `<!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>Etiqueta #${orderDisplayId}</title>
-  <style>
-    @page { size: 100mm 150mm; margin: 0mm !important; }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html { width: 100mm; height: 150mm; }
-    body {
-      width: 100mm;
-      height: 148mm;
-      margin: 0 !important;
-      padding: 3mm;
-      overflow: hidden !important;
-      font-family: Arial, Helvetica, sans-serif;
-      color: #000;
-      page-break-inside: avoid;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-
-    /* === HEADER === ~10mm */
-    .header { border-bottom: 1.5pt solid #000; padding-bottom: 1.5mm; margin-bottom: 2mm; text-align: center; }
-    .brand { font-size: 14pt; font-weight: 900; }
-    .subtitle { font-size: 6pt; color: #555; text-transform: uppercase; letter-spacing: 2px; }
-
-    /* === PEDIDO === ~12mm */
-    .order-row { text-align: center; margin-bottom: 2mm; }
-    .order-box { background: #000; color: #fff; border-radius: 1.5mm; padding: 1.5mm 4mm; display: inline-block; }
-    .order-label { font-size: 5.5pt; text-transform: uppercase; letter-spacing: 1px; opacity: 0.85; }
-    .order-number { font-size: 20pt; font-weight: 900; line-height: 1.15; }
-
-    /* === CLIENTE + TIENDA === ~14mm */
-    .info-row { display: flex; gap: 1.5mm; margin-bottom: 2mm; }
-    .info-box { flex: 1; border: 0.5pt solid #888; border-radius: 1mm; padding: 1.5mm 2mm; overflow: hidden; }
-    .info-box-store { background: #eee; }
-    .info-label { font-size: 5pt; text-transform: uppercase; letter-spacing: 1px; color: #555; font-weight: 700; }
-    .info-name { font-size: 8pt; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .info-detail { font-size: 7pt; color: #444; }
-
-    /* === QR === ~35mm */
-    .qr-area { text-align: center; margin-top: 2mm; }
-    .qr-box { display: inline-block; border: 1pt solid #aaa; border-radius: 1.5mm; padding: 1.5mm; line-height: 0; }
-    .qr-box img { width: 28mm; height: 28mm; display: block; }
-    .qr-text { font-size: 6pt; color: #555; margin-top: 1mm; line-height: 1.3; }
-
-    /* === SIN TEL === */
-    .no-phone { text-align: center; margin-top: 4mm; }
-    .no-phone p { font-size: 7pt; font-weight: 600; color: #333; }
-
-    /* === FOOTER === ~4mm */
-    .footer { text-align: center; margin-top: 2mm; }
-    .footer-date { font-size: 5.5pt; color: #999; }
-  </style>
+<meta charset="UTF-8">
+<title>Etiqueta #${orderDisplayId}</title>
+<style>
+@page { size: 100mm 150mm; margin: 0 !important; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100mm; height: 150mm; max-width: 100mm; max-height: 150mm;
+  margin: 0 !important; padding: 0 !important;
+  overflow: hidden !important;
+  font-family: Arial, sans-serif; color: #000;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.z {
+  width: 94mm; max-width: 94mm;
+  height: 144mm; max-height: 144mm;
+  margin: 3mm;
+  overflow: hidden;
+}
+.hd { border-bottom: 1.5pt solid #000; padding-bottom: 1.5mm; margin-bottom: 2.5mm; text-align: center; }
+.hd h1 { font-size: 15pt; font-weight: 900; }
+.hd p { font-size: 6.5pt; color: #444; text-transform: uppercase; letter-spacing: 2px; }
+.ord { text-align: center; margin-bottom: 2.5mm; }
+.ord span { background: #000; color: #fff; font-size: 20pt; font-weight: 900; padding: 1.5mm 5mm; border-radius: 1.5mm; }
+.sec { border: 0.5pt solid #888; border-radius: 1mm; padding: 2mm 2.5mm; margin-bottom: 2mm; }
+.sec-s { background: #eee; }
+.sec small { font-size: 5.5pt; text-transform: uppercase; letter-spacing: 1px; color: #555; font-weight: 700; display: block; }
+.sec b { font-size: 9pt; display: block; line-height: 1.25; }
+.sec i { font-style: normal; font-size: 7.5pt; color: #333; display: block; }
+.qr { text-align: center; margin-top: 2mm; }
+.qr img { width: 28mm; height: 28mm; border: 1pt solid #aaa; border-radius: 1.5mm; padding: 1mm; }
+.qr p { font-size: 6.5pt; color: #444; margin-top: 1.5mm; line-height: 1.3; }
+.np { text-align: center; margin-top: 3mm; font-size: 7.5pt; font-weight: 600; color: #333; }
+.ft { text-align: center; margin-top: 3mm; font-size: 5.5pt; color: #999; }
+</style>
 </head>
 <body>
+<div class="z">
 
-  <div class="header">
-    <div class="brand">MARCELA KOURY</div>
-    <div class="subtitle">Retiro en Tienda</div>
+  <div class="hd">
+    <h1>MARCELA KOURY</h1>
+    <p>Retiro en Tienda</p>
   </div>
 
-  <div class="order-row">
-    <div class="order-box">
-      <div class="order-label">Pedido</div>
-      <div class="order-number">#${orderDisplayId}</div>
-    </div>
+  <div class="ord">
+    <span>#${orderDisplayId}</span>
   </div>
 
-  <div class="info-row">
-    <div class="info-box">
-      <div class="info-label">Cliente</div>
-      <div class="info-name">${escapeHtml(customerName)}</div>
-      ${customerPhone ? `<div class="info-detail">${escapeHtml(customerPhone)}</div>` : ''}
-    </div>
-    <div class="info-box info-box-store">
-      <div class="info-label">Retirar en</div>
-      <div class="info-name">${escapeHtml(storeName)}</div>
-      ${storeAddress ? `<div class="info-detail">${escapeHtml(storeAddress)}</div>` : ''}
-    </div>
+  <div class="sec">
+    <small>Cliente</small>
+    <b>${escapeHtml(customerName)}</b>
+    ${customerPhone ? `<i>${escapeHtml(customerPhone)}</i>` : ''}
+  </div>
+
+  <div class="sec sec-s">
+    <small>Retirar en</small>
+    <b>${escapeHtml(storeName)}</b>
+    ${storeAddress ? `<i>${escapeHtml(storeAddress)}</i>` : ''}
   </div>
 
   ${qrUrl ? `
-  <div class="qr-area">
-    <div class="qr-box">
-      <img src="${qrUrl}" alt="QR" />
-    </div>
-    <div class="qr-text">Escane\u00e1 el QR para avisar por WhatsApp<br>que el pedido est\u00e1 listo</div>
+  <div class="qr">
+    <img src="${qrUrl}" alt="QR" />
+    <p>Escane\u00e1 para avisar por WhatsApp<br>que el pedido est\u00e1 listo</p>
   </div>
   ` : ''}
 
-  ${!customerPhone ? `
-  <div class="no-phone">
-    <p>Sin tel\u00e9fono registrado - avisar por email</p>
-  </div>
-  ` : ''}
+  ${!customerPhone ? `<div class="np">Sin tel\u00e9fono - avisar por email</div>` : ''}
 
-  <div class="footer">
-    <div class="footer-date">${dateStr}</div>
-  </div>
+  <div class="ft">${dateStr}</div>
 
-  <script>
-    ${qrUrl ? `
-    var img = document.querySelector('.qr-box img');
-    if (img && !img.complete) {
-      img.onload = function() { setTimeout(function() { window.print(); }, 100); };
-      img.onerror = function() { window.print(); };
-    } else {
-      setTimeout(function() { window.print(); }, 300);
-    }
-    ` : `setTimeout(function() { window.print(); }, 200);`}
-  </script>
+</div>
+<script>
+${qrUrl ? `
+var img = document.querySelector('.qr img');
+if (img && !img.complete) {
+  img.onload = function() { setTimeout(function(){ window.print(); }, 100); };
+  img.onerror = function() { window.print(); };
+} else { setTimeout(function(){ window.print(); }, 300); }
+` : `setTimeout(function(){ window.print(); }, 200);`}
+</script>
 </body>
 </html>`;
 
@@ -254,28 +223,26 @@ function LabelPreview({
       </div>
 
       <div className="bg-black text-white rounded-md py-1.5 px-3 mb-2 inline-block mx-auto">
-        <p className="text-[7px] uppercase tracking-wider font-medium opacity-80">Pedido</p>
         <p className="text-xl font-black leading-tight">#{orderDisplayId}</p>
       </div>
 
-      <div className="flex gap-1.5 mb-2">
-        <div className="flex-1 border border-gray-300 rounded-md p-1.5 text-left">
-          <p className="text-[7px] uppercase tracking-wider text-gray-500 font-semibold">Cliente</p>
-          <p className="text-[10px] font-bold text-gray-900 leading-tight">{customerName}</p>
-          {customerPhone && <p className="text-[8px] text-gray-600">{customerPhone}</p>}
-        </div>
-        <div className="flex-1 border border-gray-300 rounded-md p-1.5 text-left bg-gray-50">
-          <p className="text-[7px] uppercase tracking-wider text-gray-500 font-semibold">Retirar en</p>
-          <p className="text-[10px] font-bold text-gray-900 leading-tight">{storeName}</p>
-          {storeAddress && <p className="text-[8px] text-gray-600">{storeAddress}</p>}
-        </div>
+      <div className="border border-gray-300 rounded-md p-1.5 text-left mb-1.5">
+        <p className="text-[7px] uppercase tracking-wider text-gray-500 font-semibold">Cliente</p>
+        <p className="text-[11px] font-bold text-gray-900 leading-tight">{customerName}</p>
+        {customerPhone && <p className="text-[9px] text-gray-600">{customerPhone}</p>}
+      </div>
+
+      <div className="border border-gray-300 rounded-md p-1.5 text-left bg-gray-50 mb-2">
+        <p className="text-[7px] uppercase tracking-wider text-gray-500 font-semibold">Retirar en</p>
+        <p className="text-[11px] font-bold text-gray-900 leading-tight">{storeName}</p>
+        {storeAddress && <p className="text-[9px] text-gray-600">{storeAddress}</p>}
       </div>
 
       {qrUrl && (
         <div className="flex-1 flex flex-col items-center justify-center">
           <div className="border border-gray-300 rounded-md p-1.5 bg-white inline-block">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={qrUrl} alt="QR" width={90} height={90} className="mx-auto" />
+            <img src={qrUrl} alt="QR" width={80} height={80} className="mx-auto" />
           </div>
           <p className="text-[7px] text-gray-500 mt-1 leading-tight">
             Escaneá para avisar por WhatsApp
