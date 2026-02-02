@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
-import { PickingUser, hashPin } from '@/lib/mongodb/models';
+import { PickingUser, hashPin, audit } from '@/lib/mongodb/models';
 
 // GET /api/picking/users - Listar usuarios
 export async function GET(req: NextRequest) {
@@ -56,6 +56,13 @@ export async function POST(req: NextRequest) {
       name: name.trim(),
       pin: hashPin(pin),
       active: true,
+    });
+
+    audit({
+      action: 'user_create',
+      userName: 'Admin',
+      details: `Usuario creado: ${user.name}`,
+      metadata: { newUserId: user._id.toString(), newUserName: user.name },
     });
 
     return NextResponse.json({

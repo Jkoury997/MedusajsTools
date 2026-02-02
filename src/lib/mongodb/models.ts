@@ -107,10 +107,75 @@ const PickingSessionSchema = new Schema<IPickingSession>(
   { timestamps: true }
 );
 
+// ==================== AUDIT LOG ====================
+
+export type AuditAction =
+  | 'session_start'
+  | 'session_complete'
+  | 'session_cancel'
+  | 'item_pick'
+  | 'item_unpick'
+  | 'order_pack'
+  | 'fulfillment_create'
+  | 'fulfillment_error'
+  | 'user_create'
+  | 'user_update'
+  | 'user_delete'
+  | 'admin_login';
+
+export interface IAuditLog extends Document {
+  action: AuditAction;
+  userName: string;
+  userId?: mongoose.Types.ObjectId;
+  orderId?: string;
+  orderDisplayId?: number;
+  details?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: Date;
+}
+
+const AuditLogSchema = new Schema<IAuditLog>(
+  {
+    action: { type: String, required: true, index: true },
+    userName: { type: String, required: true },
+    userId: { type: Schema.Types.ObjectId, ref: 'PickingUser', index: true },
+    orderId: { type: String, index: true },
+    orderDisplayId: { type: Number },
+    details: { type: String },
+    metadata: { type: Schema.Types.Mixed },
+  },
+  { timestamps: true }
+);
+
+// Index compuesto para consultas por fecha
+AuditLogSchema.index({ createdAt: -1 });
+
 // ==================== HELPERS ====================
 
 export function hashPin(pin: string): string {
   return crypto.createHash('sha256').update(pin).digest('hex');
+}
+
+/** Registrar acción en el log de auditoría (fire-and-forget) */
+export function audit(data: {
+  action: AuditAction;
+  userName: string;
+  userId?: string;
+  orderId?: string;
+  orderDisplayId?: number;
+  details?: string;
+  metadata?: Record<string, unknown>;
+}): void {
+  // Fire-and-forget — no bloquea la respuesta
+  AuditLog.create({
+    action: data.action,
+    userName: data.userName,
+    userId: data.userId || undefined,
+    orderId: data.orderId,
+    orderDisplayId: data.orderDisplayId,
+    details: data.details,
+    metadata: data.metadata,
+  }).catch(err => console.error('[Audit] Error:', err.message));
 }
 
 // ==================== MODELOS ====================
@@ -121,3 +186,6 @@ export const PickingUser: Model<IPickingUser> =
 
 export const PickingSession: Model<IPickingSession> =
   mongoose.models.PickingSession || mongoose.model<IPickingSession>('PickingSession', PickingSessionSchema);
+
+export const AuditLog: Model<IAuditLog> =
+  mongoose.models.AuditLog || mongoose.model<IAuditLog>('AuditLog', AuditLogSchema);

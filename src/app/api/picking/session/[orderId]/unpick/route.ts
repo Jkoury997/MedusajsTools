@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession } from '@/lib/mongodb/models';
+import { PickingSession, audit } from '@/lib/mongodb/models';
 
 interface RouteParams {
   params: Promise<{ orderId: string }>;
@@ -38,6 +38,16 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     session.totalPicked = session.items.reduce((sum, i) => sum + i.quantityPicked, 0);
 
     await session.save();
+
+    audit({
+      action: 'item_unpick',
+      userName: session.userName,
+      userId: session.userId?.toString(),
+      orderId,
+      orderDisplayId: session.orderDisplayId,
+      details: `Unpick item ${item.sku || item.lineItemId} (${item.quantityPicked}/${item.quantityRequired})`,
+      metadata: { lineItemId: item.lineItemId, sku: item.sku, qty: item.quantityPicked },
+    });
 
     const totalRequired = session.items.reduce((sum, i) => sum + i.quantityRequired, 0);
     const totalPicked = session.totalPicked;

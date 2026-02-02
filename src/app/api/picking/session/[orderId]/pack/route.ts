@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession, PickingUser } from '@/lib/mongodb/models';
+import { PickingSession, PickingUser, audit } from '@/lib/mongodb/models';
 
 interface RouteParams {
   params: Promise<{ orderId: string }>;
@@ -44,6 +44,15 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     session.packedAt = new Date();
     session.packedByName = packedByName;
     await session.save();
+
+    audit({
+      action: 'order_pack',
+      userName: packedByName,
+      userId: userId || undefined,
+      orderId,
+      orderDisplayId: session.orderDisplayId,
+      details: `Pedido #${session.orderDisplayId} empaquetado por ${packedByName}`,
+    });
 
     return NextResponse.json({
       success: true,

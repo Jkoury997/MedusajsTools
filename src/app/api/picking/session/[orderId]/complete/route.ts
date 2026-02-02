@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession, PickingUser } from '@/lib/mongodb/models';
+import { PickingSession, PickingUser, audit } from '@/lib/mongodb/models';
 import { medusaRequest } from '@/lib/medusa';
 
 interface RouteParams {
@@ -64,6 +64,16 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     session.completedByName = user.name;
     await session.save();
 
+    audit({
+      action: 'session_complete',
+      userName: user.name,
+      userId: user._id.toString(),
+      orderId,
+      orderDisplayId: session.orderDisplayId,
+      details: `Picking completado en ${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s (${session.totalPicked} items)`,
+      metadata: { durationSeconds, totalPicked: session.totalPicked, totalRequired: session.totalRequired },
+    });
+
     // PASO 2: Crear fulfillment en Medusa
     let fulfillmentCreated = false;
     let fulfillmentError = '';
@@ -89,10 +99,28 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       });
 
       fulfillmentCreated = true;
+
+      audit({
+        action: 'fulfillment_create',
+        userName: user.name,
+        userId: user._id.toString(),
+        orderId,
+        orderDisplayId: session.orderDisplayId,
+        details: `Fulfillment creado en Medusa para pedido #${session.orderDisplayId}`,
+      });
     } catch (error) {
       // Si falla el fulfillment, igual el picking queda completado
       fulfillmentError = error instanceof Error ? error.message : 'Error al crear fulfillment';
       console.error('Error creating fulfillment in Medusa:', error);
+
+      audit({
+        action: 'fulfillment_error',
+        userName: user.name,
+        userId: user._id.toString(),
+        orderId,
+        orderDisplayId: session.orderDisplayId,
+        details: `Error fulfillment: ${fulfillmentError}`,
+      });
     }
 
     // Formatear duración

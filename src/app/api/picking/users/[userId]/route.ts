@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
-import { PickingUser, PickingSession, hashPin } from '@/lib/mongodb/models';
+import { PickingUser, PickingSession, hashPin, audit } from '@/lib/mongodb/models';
 
 interface RouteParams {
   params: Promise<{ userId: string }>;
@@ -109,6 +109,15 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       );
     }
 
+    const changes = Object.keys(updateData).filter(k => k !== 'pin').map(k => `${k}=${updateData[k]}`).join(', ');
+    const pinChanged = 'pin' in updateData;
+    audit({
+      action: 'user_update',
+      userName: 'Admin',
+      details: `Usuario actualizado: ${user.name}${changes ? ` (${changes})` : ''}${pinChanged ? ' (PIN cambiado)' : ''}`,
+      metadata: { targetUserId: userId, targetUserName: user.name, changes: Object.keys(updateData) },
+    });
+
     return NextResponse.json({ success: true, user });
   } catch (error) {
     return NextResponse.json(
@@ -145,6 +154,13 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
         { status: 404 }
       );
     }
+
+    audit({
+      action: 'user_delete',
+      userName: 'Admin',
+      details: `Usuario eliminado: ${user.name}`,
+      metadata: { deletedUserId: userId, deletedUserName: user.name },
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

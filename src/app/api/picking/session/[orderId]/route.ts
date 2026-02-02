@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession, PickingUser } from '@/lib/mongodb/models';
+import { PickingSession, PickingUser, audit } from '@/lib/mongodb/models';
 
 interface RouteParams {
   params: Promise<{ orderId: string }>;
@@ -132,6 +132,15 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       totalPicked: 0,
     });
 
+    audit({
+      action: 'session_start',
+      userName: user.name,
+      userId: user._id.toString(),
+      orderId,
+      orderDisplayId: orderDisplayId || 0,
+      details: `Inicio picking pedido #${orderDisplayId || 0} (${totalRequired} items)`,
+    });
+
     return NextResponse.json({
       success: true,
       session: {
@@ -196,6 +205,15 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
         { status: 404 }
       );
     }
+
+    audit({
+      action: 'session_cancel',
+      userName: session.userName,
+      userId: session.userId?.toString(),
+      orderId,
+      orderDisplayId: session.orderDisplayId,
+      details: `Cancelado: ${reason}`,
+    });
 
     return NextResponse.json({ success: true, message: 'Sesión cancelada' });
   } catch (error) {

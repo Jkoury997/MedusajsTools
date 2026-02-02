@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession } from '@/lib/mongodb/models';
+import { PickingSession, audit } from '@/lib/mongodb/models';
 
 interface RouteParams {
   params: Promise<{ orderId: string }>;
@@ -66,6 +66,16 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const totalPicked = session.totalPicked;
     const isComplete = session.items.every(i => i.quantityPicked >= i.quantityRequired);
     const elapsed = Math.round((Date.now() - session.startedAt.getTime()) / 1000);
+
+    audit({
+      action: 'item_pick',
+      userName: session.userName,
+      userId: session.userId?.toString(),
+      orderId,
+      orderDisplayId: session.orderDisplayId,
+      details: `Pick item ${item.sku || item.lineItemId} (${item.quantityPicked}/${item.quantityRequired}) via ${method || 'manual'}`,
+      metadata: { lineItemId: item.lineItemId, sku: item.sku, method: method || 'manual', qty: item.quantityPicked },
+    });
 
     return NextResponse.json({
       success: true,
