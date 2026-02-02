@@ -33,6 +33,15 @@ function buildQRUrl(data: string, size: number = 200): string {
   return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}&format=png`;
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export default function StoreLabel({ orderDisplayId, customerName, customerPhone, storeName, storeAddress }: StoreLabelProps) {
   const [showLabel, setShowLabel] = useState(false);
 
@@ -43,97 +52,166 @@ export default function StoreLabel({ orderDisplayId, customerName, customerPhone
   const qrUrl = whatsappUrl ? buildQRUrl(whatsappUrl, 200) : '';
 
   const printLabel = useCallback(() => {
-    // Abrir ventana nueva solo con la etiqueta — forma más confiable de imprimir
-    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    const printWindow = window.open('', '_blank', 'width=380,height=570');
     if (!printWindow) return;
 
     const dateStr = new Date().toLocaleDateString('es-AR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
+      day: '2-digit', month: '2-digit', year: 'numeric',
     });
 
+    // Etiqueta Zebra 100x150mm — todo en UNA sola etiqueta
     const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <title>Etiqueta #${orderDisplayId}</title>
   <style>
-    @page { size: 100mm 150mm; margin: 5mm; }
+    @page {
+      size: 100mm 150mm;
+      margin: 0;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; width: 90mm; margin: 0 auto; padding: 3mm; color: #111; }
-    .header { border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 10px; text-align: center; }
-    .brand { font-size: 18px; font-weight: 900; letter-spacing: -0.5px; }
-    .subtitle { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 3px; margin-top: 2px; }
-    .order-box { background: #000; color: #fff; border-radius: 8px; padding: 8px 16px; display: inline-block; margin-bottom: 10px; text-align: center; }
-    .order-label { font-size: 9px; text-transform: uppercase; letter-spacing: 2px; opacity: 0.8; }
-    .order-number { font-size: 28px; font-weight: 900; line-height: 1.1; }
-    .section { border: 1px solid #ccc; border-radius: 8px; padding: 10px; margin-bottom: 10px; text-align: left; }
-    .section-store { background: #f5f5f5; }
-    .section-label { font-size: 9px; text-transform: uppercase; letter-spacing: 2px; color: #888; font-weight: 600; margin-bottom: 4px; }
-    .section-name { font-size: 13px; font-weight: 700; }
-    .section-detail { font-size: 11px; color: #555; margin-top: 2px; }
-    .qr-area { text-align: center; margin-bottom: 10px; }
-    .qr-box { display: inline-block; border: 2px solid #ccc; border-radius: 8px; padding: 8px; background: #fff; }
-    .qr-box img { display: block; width: 140px; height: 140px; }
-    .qr-text { font-size: 9px; color: #888; margin-top: 6px; line-height: 1.4; }
-    .no-phone { background: #fef9c3; border: 1px solid #eab308; border-radius: 8px; padding: 8px; text-align: center; margin-bottom: 10px; }
-    .no-phone p { font-size: 11px; color: #854d0e; font-weight: 500; }
-    .footer { border-top: 1px solid #ccc; padding-top: 6px; text-align: center; }
-    .footer-date { font-size: 8px; color: #aaa; }
-    .center { text-align: center; }
+    html, body {
+      width: 100mm;
+      height: 150mm;
+      max-height: 150mm;
+      overflow: hidden;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #000;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .label {
+      width: 100mm;
+      height: 150mm;
+      max-height: 150mm;
+      padding: 4mm;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .header {
+      border-bottom: 2pt solid #000;
+      padding-bottom: 2mm;
+      margin-bottom: 3mm;
+      text-align: center;
+    }
+    .brand { font-size: 16pt; font-weight: 900; letter-spacing: -0.3px; }
+    .subtitle { font-size: 7pt; color: #555; text-transform: uppercase; letter-spacing: 2px; margin-top: 1mm; }
+    .order-row {
+      text-align: center;
+      margin-bottom: 3mm;
+    }
+    .order-box {
+      background: #000;
+      color: #fff;
+      border-radius: 2mm;
+      padding: 2mm 5mm;
+      display: inline-block;
+    }
+    .order-label { font-size: 6pt; text-transform: uppercase; letter-spacing: 1.5px; opacity: 0.85; }
+    .order-number { font-size: 22pt; font-weight: 900; line-height: 1.1; }
+    .info-row {
+      display: flex;
+      gap: 2mm;
+      margin-bottom: 2.5mm;
+    }
+    .info-box {
+      flex: 1;
+      border: 0.5pt solid #999;
+      border-radius: 1.5mm;
+      padding: 2mm 2.5mm;
+    }
+    .info-box-store { background: #f0f0f0; }
+    .info-label { font-size: 5.5pt; text-transform: uppercase; letter-spacing: 1.5px; color: #666; font-weight: 700; margin-bottom: 0.5mm; }
+    .info-name { font-size: 9pt; font-weight: 700; line-height: 1.2; }
+    .info-detail { font-size: 7.5pt; color: #444; margin-top: 0.5mm; }
+    .qr-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .qr-box {
+      border: 1pt solid #ccc;
+      border-radius: 2mm;
+      padding: 2mm;
+      background: #fff;
+      line-height: 0;
+    }
+    .qr-box img { width: 30mm; height: 30mm; display: block; }
+    .qr-text { font-size: 6.5pt; color: #666; margin-top: 1.5mm; text-align: center; line-height: 1.3; }
+    .no-phone {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .no-phone-box { border: 0.5pt solid #999; border-radius: 1.5mm; padding: 3mm; text-align: center; }
+    .no-phone-box p { font-size: 8pt; font-weight: 600; color: #333; }
+    .footer {
+      border-top: 0.5pt solid #ccc;
+      padding-top: 1.5mm;
+      text-align: center;
+      margin-top: auto;
+    }
+    .footer-date { font-size: 6pt; color: #999; }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="brand">MARCELA KOURY</div>
-    <div class="subtitle">Retiro en Tienda</div>
-  </div>
-
-  <div class="center">
-    <div class="order-box">
-      <div class="order-label">Pedido</div>
-      <div class="order-number">#${orderDisplayId}</div>
+  <div class="label">
+    <div class="header">
+      <div class="brand">MARCELA KOURY</div>
+      <div class="subtitle">Retiro en Tienda</div>
     </div>
-  </div>
 
-  <div class="section">
-    <div class="section-label">Cliente</div>
-    <div class="section-name">${escapeHtml(customerName)}</div>
-    ${customerPhone ? `<div class="section-detail">${escapeHtml(customerPhone)}</div>` : ''}
-  </div>
-
-  <div class="section section-store">
-    <div class="section-label">Retirar en</div>
-    <div class="section-name">${escapeHtml(storeName)}</div>
-    ${storeAddress ? `<div class="section-detail">${escapeHtml(storeAddress)}</div>` : ''}
-  </div>
-
-  ${qrUrl ? `
-  <div class="qr-area">
-    <div class="qr-box">
-      <img src="${qrUrl}" alt="QR WhatsApp" />
+    <div class="order-row">
+      <div class="order-box">
+        <div class="order-label">Pedido</div>
+        <div class="order-number">#${orderDisplayId}</div>
+      </div>
     </div>
-    <div class="qr-text">
-      Escaneá el QR para avisar por<br>WhatsApp que el pedido está listo
+
+    <div class="info-row">
+      <div class="info-box">
+        <div class="info-label">Cliente</div>
+        <div class="info-name">${escapeHtml(customerName)}</div>
+        ${customerPhone ? `<div class="info-detail">${escapeHtml(customerPhone)}</div>` : ''}
+      </div>
+      <div class="info-box info-box-store">
+        <div class="info-label">Retirar en</div>
+        <div class="info-name">${escapeHtml(storeName)}</div>
+        ${storeAddress ? `<div class="info-detail">${escapeHtml(storeAddress)}</div>` : ''}
+      </div>
     </div>
-  </div>
-  ` : ''}
 
-  ${!customerPhone ? `
-  <div class="no-phone">
-    <p>Sin teléfono registrado - avisar por email</p>
-  </div>
-  ` : ''}
+    ${qrUrl ? `
+    <div class="qr-area">
+      <div class="qr-box">
+        <img src="${qrUrl}" alt="QR" />
+      </div>
+      <div class="qr-text">Escane\u00e1 para avisar por WhatsApp<br>que el pedido est\u00e1 listo</div>
+    </div>
+    ` : ''}
 
-  <div class="footer">
-    <div class="footer-date">${dateStr}</div>
+    ${!customerPhone ? `
+    <div class="no-phone">
+      <div class="no-phone-box">
+        <p>Sin tel\u00e9fono registrado</p>
+        <p>Avisar por email</p>
+      </div>
+    </div>
+    ` : ''}
+
+    <div class="footer">
+      <div class="footer-date">${dateStr}</div>
+    </div>
   </div>
 
   <script>
-    // Esperar que el QR cargue y luego imprimir
     ${qrUrl ? `
-    const img = document.querySelector('.qr-box img');
+    var img = document.querySelector('.qr-box img');
     if (img && !img.complete) {
       img.onload = function() { setTimeout(function() { window.print(); }, 100); };
       img.onerror = function() { window.print(); };
@@ -154,7 +232,6 @@ export default function StoreLabel({ orderDisplayId, customerName, customerPhone
     printLabel();
   }
 
-  // Botón para mostrar/imprimir etiqueta
   if (!showLabel) {
     return (
       <button
@@ -189,10 +266,10 @@ export default function StoreLabel({ orderDisplayId, customerName, customerPhone
         </button>
       </div>
 
-      {/* Preview de etiqueta en pantalla */}
-      <div className="border-2 border-dashed border-purple-300 rounded-xl p-4 bg-purple-50">
-        <p className="text-xs text-purple-600 font-medium text-center mb-3">Vista previa de la etiqueta</p>
-        <div className="bg-white rounded-lg border border-gray-300 p-4 max-w-sm mx-auto">
+      {/* Preview */}
+      <div className="border-2 border-dashed border-purple-300 rounded-xl p-3 bg-purple-50">
+        <p className="text-xs text-purple-600 font-medium text-center mb-2">Vista previa de etiqueta (100x150mm)</p>
+        <div className="bg-white rounded-lg border border-gray-300 p-3 max-w-[280px] mx-auto aspect-[100/150]">
           <LabelPreview
             orderDisplayId={orderDisplayId}
             customerName={customerName}
@@ -207,75 +284,60 @@ export default function StoreLabel({ orderDisplayId, customerName, customerPhone
   );
 }
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-// Preview en pantalla (no se imprime desde acá)
+// Preview en pantalla — proporcional a 100x150mm
 function LabelPreview({
-  orderDisplayId,
-  customerName,
-  customerPhone,
-  storeName,
-  storeAddress,
-  qrUrl,
+  orderDisplayId, customerName, customerPhone, storeName, storeAddress, qrUrl,
 }: {
-  orderDisplayId: number;
-  customerName: string;
-  customerPhone: string | null;
-  storeName: string;
-  storeAddress: string;
-  qrUrl: string;
+  orderDisplayId: number; customerName: string; customerPhone: string | null;
+  storeName: string; storeAddress: string; qrUrl: string;
 }) {
   return (
-    <div className="text-center">
-      <div className="border-b-2 border-black pb-2 mb-3">
-        <h1 className="text-xl font-black tracking-tight">MARCELA KOURY</h1>
-        <p className="text-[10px] text-gray-500 uppercase tracking-widest">Retiro en Tienda</p>
+    <div className="text-center flex flex-col h-full">
+      <div className="border-b-2 border-black pb-1.5 mb-2">
+        <h1 className="text-base font-black tracking-tight leading-tight">MARCELA KOURY</h1>
+        <p className="text-[8px] text-gray-500 uppercase tracking-widest">Retiro en Tienda</p>
       </div>
 
-      <div className="bg-black text-white rounded-lg py-2.5 px-4 mb-3 inline-block">
-        <p className="text-[10px] uppercase tracking-wider font-medium opacity-80">Pedido</p>
-        <p className="text-3xl font-black leading-tight">#{orderDisplayId}</p>
+      <div className="bg-black text-white rounded-md py-1.5 px-3 mb-2 inline-block mx-auto">
+        <p className="text-[7px] uppercase tracking-wider font-medium opacity-80">Pedido</p>
+        <p className="text-xl font-black leading-tight">#{orderDisplayId}</p>
       </div>
 
-      <div className="border border-gray-300 rounded-lg p-3 mb-3 text-left">
-        <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1">Cliente</p>
-        <p className="text-sm font-bold text-gray-900">{customerName}</p>
-        {customerPhone && <p className="text-xs text-gray-600 mt-0.5">{customerPhone}</p>}
-      </div>
-
-      <div className="border border-gray-300 rounded-lg p-3 mb-3 text-left bg-gray-50">
-        <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1">Retirar en</p>
-        <p className="text-sm font-bold text-gray-900">{storeName}</p>
-        {storeAddress && <p className="text-xs text-gray-600 mt-0.5">{storeAddress}</p>}
+      <div className="flex gap-1.5 mb-2">
+        <div className="flex-1 border border-gray-300 rounded-md p-1.5 text-left">
+          <p className="text-[7px] uppercase tracking-wider text-gray-500 font-semibold">Cliente</p>
+          <p className="text-[10px] font-bold text-gray-900 leading-tight">{customerName}</p>
+          {customerPhone && <p className="text-[8px] text-gray-600">{customerPhone}</p>}
+        </div>
+        <div className="flex-1 border border-gray-300 rounded-md p-1.5 text-left bg-gray-50">
+          <p className="text-[7px] uppercase tracking-wider text-gray-500 font-semibold">Retirar en</p>
+          <p className="text-[10px] font-bold text-gray-900 leading-tight">{storeName}</p>
+          {storeAddress && <p className="text-[8px] text-gray-600">{storeAddress}</p>}
+        </div>
       </div>
 
       {qrUrl && (
-        <div className="mb-3">
-          <div className="inline-block border-2 border-gray-300 rounded-lg p-2 bg-white">
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <div className="border border-gray-300 rounded-md p-1.5 bg-white inline-block">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={qrUrl} alt="QR WhatsApp" width={140} height={140} className="mx-auto" />
+            <img src={qrUrl} alt="QR" width={90} height={90} className="mx-auto" />
           </div>
-          <p className="text-[10px] text-gray-500 mt-1.5 leading-tight">
-            Escaneá el QR para avisar por<br />WhatsApp que el pedido está listo
+          <p className="text-[7px] text-gray-500 mt-1 leading-tight">
+            Escaneá para avisar por WhatsApp
           </p>
         </div>
       )}
 
       {!customerPhone && (
-        <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-2 mb-3">
-          <p className="text-xs text-yellow-800 font-medium">Sin teléfono registrado - avisar por email</p>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="border border-gray-300 rounded-md p-2 text-center">
+            <p className="text-[9px] font-semibold text-gray-700">Sin teléfono - avisar por email</p>
+          </div>
         </div>
       )}
 
-      <div className="border-t border-gray-300 pt-2 mt-2">
-        <p className="text-[9px] text-gray-400">
+      <div className="border-t border-gray-300 pt-1 mt-auto">
+        <p className="text-[7px] text-gray-400">
           {new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
         </p>
       </div>
