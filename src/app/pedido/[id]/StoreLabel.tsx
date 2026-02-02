@@ -93,7 +93,7 @@ html, body {
 .sec b { font-size: 9pt; display: block; line-height: 1.25; }
 .sec i { font-style: normal; font-size: 7.5pt; color: #333; display: block; }
 .qr { text-align: center; margin-top: 2mm; }
-.qr img { width: 28mm; height: 28mm; border: 1pt solid #aaa; border-radius: 1.5mm; padding: 1mm; }
+.qr img { width: 40mm; height: 40mm; border: 1pt solid #aaa; border-radius: 1.5mm; padding: 1mm; }
 .qr p { font-size: 6.5pt; color: #444; margin-top: 1.5mm; line-height: 1.3; }
 .np { text-align: center; margin-top: 3mm; font-size: 7.5pt; font-weight: 600; color: #333; }
 .ft { text-align: center; margin-top: 3mm; font-size: 5.5pt; color: #999; }
@@ -242,7 +242,7 @@ function LabelPreview({
         <div className="flex-1 flex flex-col items-center justify-center">
           <div className="border border-gray-300 rounded-md p-1.5 bg-white inline-block">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={qrUrl} alt="QR" width={80} height={80} className="mx-auto" />
+            <img src={qrUrl} alt="QR" width={110} height={110} className="mx-auto" />
           </div>
           <p className="text-[7px] text-gray-500 mt-1 leading-tight">
             Escaneá para avisar por WhatsApp
