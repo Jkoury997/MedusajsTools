@@ -59,154 +59,109 @@ export default function StoreLabel({ orderDisplayId, customerName, customerPhone
       day: '2-digit', month: '2-digit', year: 'numeric',
     });
 
-    // Etiqueta Zebra 100x150mm — todo en UNA sola etiqueta
+    // Etiqueta Zebra 100mm x 150mm — DEBE entrar en UNA sola etiqueta
+    // IMPORTANTE: En el diálogo de impresión de Chrome seleccionar:
+    //   Tamaño de papel: 100x150mm  |  Márgenes: Ninguno  |  Escala: 100%
     const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <title>Etiqueta #${orderDisplayId}</title>
   <style>
-    @page {
-      size: 100mm 150mm;
-      margin: 0;
-    }
+    @page { size: 100mm 150mm; margin: 0mm !important; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
+    html { width: 100mm; height: 150mm; }
+    body {
       width: 100mm;
-      height: 150mm;
-      max-height: 150mm;
-      overflow: hidden;
+      height: 148mm;
+      margin: 0 !important;
+      padding: 3mm;
+      overflow: hidden !important;
       font-family: Arial, Helvetica, sans-serif;
       color: #000;
+      page-break-inside: avoid;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
-    .label {
-      width: 100mm;
-      height: 150mm;
-      max-height: 150mm;
-      padding: 4mm;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-    }
-    .header {
-      border-bottom: 2pt solid #000;
-      padding-bottom: 2mm;
-      margin-bottom: 3mm;
-      text-align: center;
-    }
-    .brand { font-size: 16pt; font-weight: 900; letter-spacing: -0.3px; }
-    .subtitle { font-size: 7pt; color: #555; text-transform: uppercase; letter-spacing: 2px; margin-top: 1mm; }
-    .order-row {
-      text-align: center;
-      margin-bottom: 3mm;
-    }
-    .order-box {
-      background: #000;
-      color: #fff;
-      border-radius: 2mm;
-      padding: 2mm 5mm;
-      display: inline-block;
-    }
-    .order-label { font-size: 6pt; text-transform: uppercase; letter-spacing: 1.5px; opacity: 0.85; }
-    .order-number { font-size: 22pt; font-weight: 900; line-height: 1.1; }
-    .info-row {
-      display: flex;
-      gap: 2mm;
-      margin-bottom: 2.5mm;
-    }
-    .info-box {
-      flex: 1;
-      border: 0.5pt solid #999;
-      border-radius: 1.5mm;
-      padding: 2mm 2.5mm;
-    }
-    .info-box-store { background: #f0f0f0; }
-    .info-label { font-size: 5.5pt; text-transform: uppercase; letter-spacing: 1.5px; color: #666; font-weight: 700; margin-bottom: 0.5mm; }
-    .info-name { font-size: 9pt; font-weight: 700; line-height: 1.2; }
-    .info-detail { font-size: 7.5pt; color: #444; margin-top: 0.5mm; }
-    .qr-area {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-    }
-    .qr-box {
-      border: 1pt solid #ccc;
-      border-radius: 2mm;
-      padding: 2mm;
-      background: #fff;
-      line-height: 0;
-    }
-    .qr-box img { width: 30mm; height: 30mm; display: block; }
-    .qr-text { font-size: 6.5pt; color: #666; margin-top: 1.5mm; text-align: center; line-height: 1.3; }
-    .no-phone {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .no-phone-box { border: 0.5pt solid #999; border-radius: 1.5mm; padding: 3mm; text-align: center; }
-    .no-phone-box p { font-size: 8pt; font-weight: 600; color: #333; }
-    .footer {
-      border-top: 0.5pt solid #ccc;
-      padding-top: 1.5mm;
-      text-align: center;
-      margin-top: auto;
-    }
-    .footer-date { font-size: 6pt; color: #999; }
+
+    /* === HEADER === ~10mm */
+    .header { border-bottom: 1.5pt solid #000; padding-bottom: 1.5mm; margin-bottom: 2mm; text-align: center; }
+    .brand { font-size: 14pt; font-weight: 900; }
+    .subtitle { font-size: 6pt; color: #555; text-transform: uppercase; letter-spacing: 2px; }
+
+    /* === PEDIDO === ~12mm */
+    .order-row { text-align: center; margin-bottom: 2mm; }
+    .order-box { background: #000; color: #fff; border-radius: 1.5mm; padding: 1.5mm 4mm; display: inline-block; }
+    .order-label { font-size: 5.5pt; text-transform: uppercase; letter-spacing: 1px; opacity: 0.85; }
+    .order-number { font-size: 20pt; font-weight: 900; line-height: 1.15; }
+
+    /* === CLIENTE + TIENDA === ~14mm */
+    .info-row { display: flex; gap: 1.5mm; margin-bottom: 2mm; }
+    .info-box { flex: 1; border: 0.5pt solid #888; border-radius: 1mm; padding: 1.5mm 2mm; overflow: hidden; }
+    .info-box-store { background: #eee; }
+    .info-label { font-size: 5pt; text-transform: uppercase; letter-spacing: 1px; color: #555; font-weight: 700; }
+    .info-name { font-size: 8pt; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .info-detail { font-size: 7pt; color: #444; }
+
+    /* === QR === ~35mm */
+    .qr-area { text-align: center; margin-top: 2mm; }
+    .qr-box { display: inline-block; border: 1pt solid #aaa; border-radius: 1.5mm; padding: 1.5mm; line-height: 0; }
+    .qr-box img { width: 28mm; height: 28mm; display: block; }
+    .qr-text { font-size: 6pt; color: #555; margin-top: 1mm; line-height: 1.3; }
+
+    /* === SIN TEL === */
+    .no-phone { text-align: center; margin-top: 4mm; }
+    .no-phone p { font-size: 7pt; font-weight: 600; color: #333; }
+
+    /* === FOOTER === ~4mm */
+    .footer { text-align: center; margin-top: 2mm; }
+    .footer-date { font-size: 5.5pt; color: #999; }
   </style>
 </head>
 <body>
-  <div class="label">
-    <div class="header">
-      <div class="brand">MARCELA KOURY</div>
-      <div class="subtitle">Retiro en Tienda</div>
-    </div>
 
-    <div class="order-row">
-      <div class="order-box">
-        <div class="order-label">Pedido</div>
-        <div class="order-number">#${orderDisplayId}</div>
-      </div>
-    </div>
+  <div class="header">
+    <div class="brand">MARCELA KOURY</div>
+    <div class="subtitle">Retiro en Tienda</div>
+  </div>
 
-    <div class="info-row">
-      <div class="info-box">
-        <div class="info-label">Cliente</div>
-        <div class="info-name">${escapeHtml(customerName)}</div>
-        ${customerPhone ? `<div class="info-detail">${escapeHtml(customerPhone)}</div>` : ''}
-      </div>
-      <div class="info-box info-box-store">
-        <div class="info-label">Retirar en</div>
-        <div class="info-name">${escapeHtml(storeName)}</div>
-        ${storeAddress ? `<div class="info-detail">${escapeHtml(storeAddress)}</div>` : ''}
-      </div>
+  <div class="order-row">
+    <div class="order-box">
+      <div class="order-label">Pedido</div>
+      <div class="order-number">#${orderDisplayId}</div>
     </div>
+  </div>
 
-    ${qrUrl ? `
-    <div class="qr-area">
-      <div class="qr-box">
-        <img src="${qrUrl}" alt="QR" />
-      </div>
-      <div class="qr-text">Escane\u00e1 para avisar por WhatsApp<br>que el pedido est\u00e1 listo</div>
+  <div class="info-row">
+    <div class="info-box">
+      <div class="info-label">Cliente</div>
+      <div class="info-name">${escapeHtml(customerName)}</div>
+      ${customerPhone ? `<div class="info-detail">${escapeHtml(customerPhone)}</div>` : ''}
     </div>
-    ` : ''}
+    <div class="info-box info-box-store">
+      <div class="info-label">Retirar en</div>
+      <div class="info-name">${escapeHtml(storeName)}</div>
+      ${storeAddress ? `<div class="info-detail">${escapeHtml(storeAddress)}</div>` : ''}
+    </div>
+  </div>
 
-    ${!customerPhone ? `
-    <div class="no-phone">
-      <div class="no-phone-box">
-        <p>Sin tel\u00e9fono registrado</p>
-        <p>Avisar por email</p>
-      </div>
+  ${qrUrl ? `
+  <div class="qr-area">
+    <div class="qr-box">
+      <img src="${qrUrl}" alt="QR" />
     </div>
-    ` : ''}
+    <div class="qr-text">Escane\u00e1 el QR para avisar por WhatsApp<br>que el pedido est\u00e1 listo</div>
+  </div>
+  ` : ''}
 
-    <div class="footer">
-      <div class="footer-date">${dateStr}</div>
-    </div>
+  ${!customerPhone ? `
+  <div class="no-phone">
+    <p>Sin tel\u00e9fono registrado - avisar por email</p>
+  </div>
+  ` : ''}
+
+  <div class="footer">
+    <div class="footer-date">${dateStr}</div>
   </div>
 
   <script>
