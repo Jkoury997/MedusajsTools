@@ -204,6 +204,26 @@ export interface Address {
   metadata?: AddressMetadata | null;
 }
 
+export interface StorePickupData {
+  id: string;
+  name: string;
+  address: string;
+}
+
+export interface ShippingMethod {
+  id: string;
+  name: string;
+  amount: number;
+  shipping_option_id?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  shipping_option?: any;
+  data?: {
+    store?: StorePickupData;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    [key: string]: any;
+  } | null;
+}
+
 export interface Order {
   id: string;
   display_id: number;
@@ -221,6 +241,7 @@ export interface Order {
   items: LineItem[];
   shipping_address: Address | null;
   billing_address: Address | null;
+  shipping_methods?: ShippingMethod[];
   customer: {
     id: string;
     email: string;
@@ -250,51 +271,95 @@ const fulfillmentFilterMap: Record<FulfillmentFilter, string[]> = {
   enviados: ['shipped', 'partially_shipped'],
 };
 
-// Caché simple en memoria para pedidos (30 segundos)
+// Caché de TODOS los pedidos pagados (30 segundos)
+// Traemos todo una vez y filtramos en memoria por fulfillment status
 const ORDERS_CACHE_DURATION = 30 * 1000;
-interface OrdersCache {
-  data: OrdersResponse;
-  timestamp: number;
-  filter: string;
-}
-let ordersCache: OrdersCache | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let allPaidOrdersCache: { orders: any[]; timestamp: number } | null = null;
+let fetchingPromise: Promise<void> | null = null;
 
-// Fetch paid orders - MedusaJS v2 API (optimizado para listado)
+// Trae TODOS los pedidos de Medusa con paginación y los cachea
+async function fetchAllOrders(): Promise<void> {
+  const PAGE_SIZE = 100;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let allOrders: any[] = [];
+  let currentOffset = 0;
+  let hasMore = true;
+
+  console.log(`[fetchAllOrders] 📋 Cargando todos los pedidos de Medusa...`);
+  const startTime = Date.now();
+
+  while (hasMore) {
+    const response = await medusaRequest<{ orders: unknown[]; count: number; offset: number; limit: number }>(
+      `/admin/orders?limit=${PAGE_SIZE}&offset=${currentOffset}&fields=+shipping_address.*,+customer.*,+items.quantity,+shipping_methods.*`
+    );
+
+    const pageOrders = response.orders || [];
+    allOrders = allOrders.concat(pageOrders);
+    currentOffset += PAGE_SIZE;
+
+    if (pageOrders.length < PAGE_SIZE || allOrders.length >= response.count) {
+      hasMore = false;
+    }
+    // Seguridad: máximo 500 pedidos
+    if (allOrders.length >= 500) {
+      hasMore = false;
+    }
+  }
+
+  // Filtrar solo pagados (captured)
+  const paidOrders = allOrders.filter((order: any) => {
+    const paymentStatus = order.payment_status?.toLowerCase();
+    return paymentStatus === 'captured';
+  });
+
+  console.log(`[fetchAllOrders] ✅ ${paidOrders.length} pedidos pagados de ${allOrders.length} totales - ${Date.now() - startTime}ms`);
+
+  allPaidOrdersCache = {
+    orders: paidOrders,
+    timestamp: Date.now(),
+  };
+}
+
+// Obtiene todos los pedidos pagados (usa caché)
+async function getAllPaidOrders(): Promise<any[]> {
+  // Si el caché es válido, usarlo
+  if (allPaidOrdersCache && Date.now() - allPaidOrdersCache.timestamp < ORDERS_CACHE_DURATION) {
+    console.log(`[getPaidOrders] ⚡ Usando caché (${allPaidOrdersCache.orders.length} pedidos pagados)`);
+    return allPaidOrdersCache.orders;
+  }
+
+  // Si ya hay un fetch en curso, esperar
+  if (fetchingPromise) {
+    await fetchingPromise;
+    return allPaidOrdersCache?.orders || [];
+  }
+
+  // Iniciar nuevo fetch
+  fetchingPromise = fetchAllOrders().finally(() => {
+    fetchingPromise = null;
+  });
+  await fetchingPromise;
+
+  return allPaidOrdersCache?.orders || [];
+}
+
+// Fetch paid orders - MedusaJS v2 API
+// Nota: Medusa v2 tiene bugs con filtros de payment_status/fulfillment_status en query params,
+// así que traemos todos y filtramos en memoria.
 export async function getPaidOrders(
   limit = 50,
   offset = 0,
   fulfillmentFilter?: FulfillmentFilter
 ): Promise<OrdersResponse> {
-  const cacheKey = `${fulfillmentFilter || 'all'}-${limit}-${offset}`;
-
-  // Verificar caché
-  if (ordersCache &&
-      ordersCache.filter === cacheKey &&
-      Date.now() - ordersCache.timestamp < ORDERS_CACHE_DURATION) {
-    console.log(`[getPaidOrders] ⚡ Usando caché (${ordersCache.data.orders.length} pedidos)`);
-    return ordersCache.data;
-  }
-
-  console.log(`[getPaidOrders] 📋 Cargando pedidos (filtro: ${fulfillmentFilter || 'todos'})...`);
-  const startTime = Date.now();
-
-  // Solo traer los campos necesarios para el listado (sin items detallados)
-  const response = await medusaRequest<{ orders: unknown[]; count: number; offset: number; limit: number }>(
-    `/admin/orders?limit=${limit}&offset=${offset}&fields=+shipping_address.*,+customer.*,+items.quantity`
-  );
-
-  // Filtrar solo pedidos con pago capturado (captured = pagado)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const allOrders = response.orders as any[];
-  let filteredOrders = allOrders.filter((order: any) => {
-    const paymentStatus = order.payment_status?.toLowerCase();
-    return paymentStatus === 'captured';
-  });
+  const allPaidOrders = await getAllPaidOrders();
 
   // Aplicar filtro de fulfillment si se especifica
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let filteredOrders = allPaidOrders;
   if (fulfillmentFilter && fulfillmentFilterMap[fulfillmentFilter]) {
     const validStatuses = fulfillmentFilterMap[fulfillmentFilter];
-    filteredOrders = filteredOrders.filter((order: any) => {
+    filteredOrders = allPaidOrders.filter((order: any) => {
       const status = order.fulfillment_status || 'not_fulfilled';
       return validStatuses.includes(status);
     });
@@ -303,25 +368,16 @@ export async function getPaidOrders(
   const result = {
     orders: filteredOrders,
     count: filteredOrders.length,
-    offset: response.offset,
-    limit: response.limit,
+    offset: 0,
+    limit: filteredOrders.length,
   } as OrdersResponse;
-
-  // Guardar en caché
-  ordersCache = {
-    data: result,
-    timestamp: Date.now(),
-    filter: cacheKey,
-  };
-
-  console.log(`[getPaidOrders] ✅ ${filteredOrders.length} pedidos (filtro: ${fulfillmentFilter || 'todos'}) - ${Date.now() - startTime}ms`);
 
   return result;
 }
 
 // Función para invalidar el caché manualmente (por ejemplo, después de una acción)
 export function invalidateOrdersCache() {
-  ordersCache = null;
+  allPaidOrdersCache = null;
   console.log('[getPaidOrders] 🗑️ Caché invalidado');
 }
 
@@ -331,7 +387,7 @@ export async function getOrderById(orderId: string): Promise<OrderResponse> {
   const startTime = Date.now();
 
   const response = await medusaRequest<{ order: unknown }>(
-    `/admin/orders/${orderId}?fields=+items.*,+items.variant.*,+items.variant.product.*,+shipping_address.*,+billing_address.*,+customer.*`
+    `/admin/orders/${orderId}?fields=+items.*,+items.variant.*,+items.variant.product.*,+shipping_address.*,+billing_address.*,+customer.*,+shipping_methods.*`
   );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

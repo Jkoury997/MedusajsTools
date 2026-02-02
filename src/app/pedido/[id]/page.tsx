@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getOrderById, Order, LineItem } from '@/lib/medusa';
 import PrintButton from './PrintButton';
 import PickingInterface from './PickingInterface';
+import StoreLabel from './StoreLabel';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -98,6 +99,24 @@ function formatProvince(provinceCode: string): string {
   return provinces[provinceCode.toLowerCase()] || provinceCode;
 }
 
+// Detecta si el envío es retiro en tienda y devuelve datos de la tienda
+function getStorePickupInfo(order: Order): { storeName: string; storeAddress: string } | null {
+  const methods = order.shipping_methods;
+  if (!methods || methods.length === 0) return null;
+  const method = methods[0];
+  const name = (method.name || '').toLowerCase();
+  // Detectar por nombre: "retiro", "tienda", "pickup", "sucursal"
+  const isStorePickup = name.includes('retiro') || name.includes('tienda') || name.includes('pickup') || name.includes('sucursal');
+  if (!isStorePickup) return null;
+  // Intentar obtener datos de la tienda desde data.store
+  const store = method.data?.store;
+  if (store?.name && store?.address) {
+    return { storeName: store.name, storeAddress: store.address };
+  }
+  // Fallback: usar el nombre del método de envío
+  return { storeName: method.name || 'Tienda', storeAddress: '' };
+}
+
 // Extrae el código del producto (external_id del producto)
 function getItemCode(item: LineItem): string {
   if (item.variant?.product?.external_id) {
@@ -140,7 +159,7 @@ function ItemRowPrint({ item, index }: { item: LineItem; index: number }) {
   );
 }
 
-function OrderHeader({ order, backUrl }: { order: Order; backUrl: string }) {
+function OrderHeader({ order, sortedItems, backUrl }: { order: Order; sortedItems: LineItem[]; backUrl: string }) {
   const totalItems = order.items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
@@ -159,7 +178,12 @@ function OrderHeader({ order, backUrl }: { order: Order; backUrl: string }) {
             <p className="text-xs text-gray-500">{formatDate(order.created_at)}</p>
           </div>
 
-          <PrintButton />
+          <PrintButton
+            orderId={order.id}
+            orderDisplayId={order.display_id}
+            orderItems={sortedItems}
+            fulfillmentStatus={order.fulfillment_status || 'not_fulfilled'}
+          />
         </div>
 
         {/* Stats bar */}
@@ -361,9 +385,19 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
     );
   }
 
+  // Ordenar items alfabéticamente por nombre de producto, luego por talle
+  const sortedItems = [...order.items].sort((a, b) => {
+    const nameA = getProductName(a).toLowerCase();
+    const nameB = getProductName(b).toLowerCase();
+    if (nameA !== nameB) return nameA.localeCompare(nameB);
+    const sizeA = getItemSize(a) || '';
+    const sizeB = getItemSize(b) || '';
+    return sizeA.localeCompare(sizeB);
+  });
+
   return (
     <div className="min-h-screen pb-6">
-      <OrderHeader order={order} backUrl={backUrl} />
+      <OrderHeader order={order} sortedItems={sortedItems} backUrl={backUrl} />
 
       <div className="mt-4">
         <CustomerInfo order={order} />
@@ -381,18 +415,78 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
               </tr>
             </thead>
             <tbody>
-              {order.items.map((item, index) => (
+              {sortedItems.map((item, index) => (
                 <ItemRowPrint key={item.id} item={item} index={index} />
               ))}
             </tbody>
           </table>
         </div>
 
+        {/* Lista de artículos en pantalla - solo cuando NO hay picking (pedidos ya preparados/enviados) */}
+        {(order.fulfillment_status === 'fulfilled' || order.fulfillment_status === 'shipped' || order.fulfillment_status === 'partially_shipped') && (
+          <div className="print:hidden space-y-2 mb-4">
+            <h3 className="text-sm font-bold text-gray-700 mb-2">
+              Artículos ({sortedItems.reduce((sum, item) => sum + item.quantity, 0)})
+            </h3>
+            {sortedItems.map((item) => {
+              const productName = getProductName(item);
+              const code = getItemCode(item);
+              const color = getItemColor(item);
+              const size = getItemSize(item);
+              const thumbnail = item.variant?.product?.thumbnail;
+
+              return (
+                <div key={item.id} className="bg-white rounded-xl border border-gray-200 p-3">
+                  <div className="flex gap-3">
+                    {thumbnail && (
+                      <img
+                        src={thumbnail}
+                        alt={productName}
+                        className="w-14 h-14 object-cover rounded-lg border flex-shrink-0"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 line-clamp-1">{productName}</p>
+                      <p className="text-xs text-gray-500 font-mono">{code}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        {size && (
+                          <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">{size}</span>
+                        )}
+                        {color && (
+                          <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded">{color}</span>
+                        )}
+                        <span className="text-xs font-bold text-gray-700 ml-auto">x{item.quantity}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Etiqueta de Tienda - solo para pedidos preparados con retiro en tienda */}
+        {(order.fulfillment_status === 'fulfilled' || order.fulfillment_status === 'shipped' || order.fulfillment_status === 'partially_shipped') && (() => {
+          const storeInfo = getStorePickupInfo(order);
+          if (!storeInfo) return null;
+          return (
+            <div className="print:hidden mb-4">
+              <StoreLabel
+                orderDisplayId={order.display_id}
+                customerName={getCustomerName(order)}
+                customerPhone={order.shipping_address?.phone || null}
+                storeName={storeInfo.storeName}
+                storeAddress={storeInfo.storeAddress}
+              />
+            </div>
+          );
+        })()}
+
         {/* Picking Interface */}
         <PickingInterface
           orderId={order.id}
           orderDisplayId={order.display_id}
-          orderItems={order.items}
+          orderItems={sortedItems}
           fulfillmentStatus={order.fulfillment_status || 'not_fulfilled'}
         />
       </div>

@@ -61,16 +61,44 @@ interface PickingInfo {
   progressPercent: number;
 }
 
+// Detecta si el envío es rápido/express por nombre
+function getShippingInfo(order: Order): { name: string; isExpress: boolean } | null {
+  const methods = order.shipping_methods;
+  if (!methods || methods.length === 0) return null;
+  const method = methods[0];
+  const name = method.name || method.shipping_option?.name || '';
+  if (!name) return null;
+  const lower = name.toLowerCase();
+  const isExpress = lower.includes('rapido') || lower.includes('rápido') || lower.includes('express')
+    || lower.includes('urgente') || lower.includes('24') || lower.includes('priorit');
+  return { name, isExpress };
+}
+
 function OrderCard({ order, estado, pickingInfo }: { order: Order; estado: FulfillmentFilter; pickingInfo?: PickingInfo }) {
   const fulfillmentBadge = getFulfillmentBadge(order.fulfillment_status || 'not_fulfilled');
   const items = order.items || [];
   const totalItems = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+  const shippingInfo = getShippingInfo(order);
 
   return (
     <Link href={`/pedido/${order.id}?from=${estado}`} className="block">
       <div className={`bg-white rounded-xl shadow-sm active:shadow-md transition-all border overflow-hidden ${
-        pickingInfo?.status === 'in_progress' ? 'border-blue-300 ring-1 ring-blue-200' : 'border-gray-100'
+        shippingInfo?.isExpress
+          ? 'border-orange-400 ring-1 ring-orange-200'
+          : pickingInfo?.status === 'in_progress'
+            ? 'border-blue-300 ring-1 ring-blue-200'
+            : 'border-gray-100'
       }`}>
+        {/* Banner envío rápido */}
+        {shippingInfo?.isExpress && (
+          <div className="bg-orange-500 text-white px-4 py-1.5 flex items-center gap-1.5">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            <span className="text-xs font-bold uppercase tracking-wider">Envío Rápido</span>
+          </div>
+        )}
+
         {/* Header con número de pedido y estado */}
         <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
           <div className="flex items-center gap-2">
@@ -128,6 +156,20 @@ function OrderCard({ order, estado, pickingInfo }: { order: Order; estado: Fulfi
               </svg>
               <span className="text-sm text-gray-600 line-clamp-1">
                 {order.shipping_address.city}, {order.shipping_address.province || order.shipping_address.country_code}
+              </span>
+            </div>
+          )}
+
+          {/* Envío */}
+          {shippingInfo && (
+            <div className="flex items-center gap-2 mb-2">
+              <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
+              </svg>
+              <span className={`text-xs font-medium truncate ${
+                shippingInfo.isExpress ? 'text-orange-600 font-bold' : 'text-gray-500'
+              }`}>
+                {shippingInfo.name}
               </span>
             </div>
           )}
@@ -237,14 +279,32 @@ async function OrdersList({ estado }: { estado: FulfillmentFilter }) {
     );
   }
 
+  // Ordenar: envío rápido primero, después por fecha (más viejo primero)
+  const sortedOrders = [...orders].sort((a, b) => {
+    const aExpress = getShippingInfo(a)?.isExpress ? 1 : 0;
+    const bExpress = getShippingInfo(b)?.isExpress ? 1 : 0;
+    if (bExpress !== aExpress) return bExpress - aExpress;
+    // Más viejo primero (FIFO)
+    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+  });
+
+  const expressCount = sortedOrders.filter(o => getShippingInfo(o)?.isExpress).length;
+
   return (
     <>
       {/* Contador de pedidos */}
-      <p className="text-xs text-gray-500 mb-3">{orders.length} pedido{orders.length !== 1 ? 's' : ''}</p>
+      <p className="text-xs text-gray-500 mb-3">
+        {orders.length} pedido{orders.length !== 1 ? 's' : ''}
+        {expressCount > 0 && (
+          <span className="text-orange-600 font-semibold ml-1">
+            ({expressCount} rápido{expressCount !== 1 ? 's' : ''})
+          </span>
+        )}
+      </p>
 
       {/* Grid de pedidos */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {orders.map((order) => (
+        {sortedOrders.map((order) => (
           <OrderCard key={order.id} order={order} estado={estado} pickingInfo={pickingMap[order.id]} />
         ))}
       </div>
