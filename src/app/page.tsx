@@ -85,7 +85,7 @@ function OrderCard({ order, estado, pickingInfo }: { order: Order; estado: Fulfi
       <div className={`bg-white rounded-xl shadow-sm active:shadow-md transition-all border overflow-hidden ${
         shippingInfo?.isExpress
           ? 'border-orange-400 ring-1 ring-orange-200'
-          : pickingInfo?.status === 'in_progress'
+          : pickingInfo?.status === 'in_progress' && estado === 'preparar'
             ? 'border-blue-300 ring-1 ring-blue-200'
             : 'border-gray-100'
       }`}>
@@ -112,8 +112,8 @@ function OrderCard({ order, estado, pickingInfo }: { order: Order; estado: Fulfi
           </span>
         </div>
 
-        {/* Picking en curso */}
-        {pickingInfo?.status === 'in_progress' && (
+        {/* Picking en curso — solo en pedidos no fulfillados */}
+        {pickingInfo?.status === 'in_progress' && estado === 'preparar' && (
           <div className="px-4 py-2 bg-blue-50 border-b border-blue-100">
             <div className="flex items-center gap-2 mb-1.5">
               <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
