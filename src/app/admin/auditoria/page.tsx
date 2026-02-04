@@ -15,7 +15,7 @@ interface AuditEntry {
   createdAt: string;
 }
 
-type ActionFilter = '' | 'session_start' | 'session_complete' | 'session_cancel' | 'item_pick' | 'item_unpick' | 'order_pack' | 'fulfillment_create' | 'fulfillment_error' | 'user_create' | 'user_update' | 'user_delete' | 'admin_login';
+type ActionFilter = '' | 'session_start' | 'session_complete' | 'session_cancel' | 'item_pick' | 'item_unpick' | 'order_pack' | 'fulfillment_create' | 'fulfillment_error' | 'order_deliver' | 'user_create' | 'user_update' | 'user_delete' | 'admin_login' | 'store_login';
 
 const ACTION_CONFIG: Record<string, { label: string; icon: string; color: string; bg: string }> = {
   session_start:     { label: 'Inicio picking',     icon: '▶',  color: 'text-blue-700',    bg: 'bg-blue-100' },
@@ -26,10 +26,12 @@ const ACTION_CONFIG: Record<string, { label: string; icon: string; color: string
   order_pack:        { label: 'Empaquetado',         icon: '📦', color: 'text-purple-700',  bg: 'bg-purple-100' },
   fulfillment_create:{ label: 'Fulfillment creado',  icon: '🚚', color: 'text-cyan-700',    bg: 'bg-cyan-100' },
   fulfillment_error: { label: 'Error fulfillment',   icon: '⚠',  color: 'text-red-700',     bg: 'bg-red-50' },
+  order_deliver:     { label: 'Entregado tienda',    icon: '🏪', color: 'text-emerald-700', bg: 'bg-emerald-100' },
   user_create:       { label: 'Usuario creado',      icon: '👤', color: 'text-indigo-700',  bg: 'bg-indigo-100' },
   user_update:       { label: 'Usuario actualizado', icon: '✏',  color: 'text-amber-700',   bg: 'bg-amber-100' },
   user_delete:       { label: 'Usuario eliminado',   icon: '🗑',  color: 'text-red-700',     bg: 'bg-red-100' },
   admin_login:       { label: 'Login admin',         icon: '🔑', color: 'text-gray-700',    bg: 'bg-gray-100' },
+  store_login:       { label: 'Login tienda',        icon: '🏪', color: 'text-emerald-700', bg: 'bg-emerald-50' },
 };
 
 const FILTER_GROUPS = [
@@ -39,11 +41,11 @@ const FILTER_GROUPS = [
   },
   {
     label: 'Envio',
-    actions: ['order_pack', 'fulfillment_create', 'fulfillment_error'],
+    actions: ['order_pack', 'fulfillment_create', 'fulfillment_error', 'order_deliver'],
   },
   {
     label: 'Admin',
-    actions: ['user_create', 'user_update', 'user_delete', 'admin_login'],
+    actions: ['user_create', 'user_update', 'user_delete', 'admin_login', 'store_login'],
   },
 ];
 
@@ -123,8 +125,8 @@ export default function AuditoriaPage() {
   async function handleAdminAuth(e: React.FormEvent) {
     e.preventDefault();
     setAuthError('');
-    if (!adminPin || adminPin.length !== 4) {
-      setAuthError('Ingresa un PIN de 4 digitos');
+    if (!adminPin || adminPin.length < 4) {
+      setAuthError('Ingresá un PIN de 4 a 6 dígitos');
       return;
     }
     setAuthLoading(true);
@@ -168,7 +170,7 @@ export default function AuditoriaPage() {
               value={adminPin}
               onChange={(e) => setAdminPin(e.target.value.replace(/\D/g, ''))}
               placeholder="----"
-              maxLength={4}
+              maxLength={6}
               inputMode="numeric"
               autoFocus
               className="w-full px-4 py-3 border-2 rounded-xl text-2xl text-center tracking-[0.5em] focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
@@ -180,7 +182,7 @@ export default function AuditoriaPage() {
             )}
             <button
               type="submit"
-              disabled={authLoading || adminPin.length !== 4}
+              disabled={authLoading || adminPin.length < 4}
               className="w-full bg-amber-600 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors hover:bg-amber-700"
             >
               {authLoading ? 'Verificando...' : 'Ingresar'}

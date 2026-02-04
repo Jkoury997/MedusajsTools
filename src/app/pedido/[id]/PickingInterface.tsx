@@ -135,13 +135,19 @@ function getItemCode(item: OrderItem): string {
 
 export default function PickingInterface({ orderId, orderDisplayId, orderItems, fulfillmentStatus }: PickingInterfaceProps) {
   // States
-  const [step, setStep] = useState<'idle' | 'auth' | 'picking' | 'completed'>('idle');
+  const [step, setStep] = useState<'idle' | 'auth' | 'pinChange' | 'picking' | 'completed'>('idle');
   const [checkingSession, setCheckingSession] = useState(true);
   const [pickerPin, setPickerPin] = useState('');
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [userId, setUserId] = useState('');
   const [userName, setUserName] = useState('');
+
+  // PIN change
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [pinChangeError, setPinChangeError] = useState('');
+  const [pinChangeLoading, setPinChangeLoading] = useState(false);
 
   // Session
   const [session, setSession] = useState<SessionData | null>(null);
@@ -209,8 +215,8 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
   async function handleAuth(e: React.FormEvent) {
     e.preventDefault();
     setAuthError('');
-    if (!pickerPin || pickerPin.length !== 4) {
-      setAuthError('Ingresá tu PIN de 4 dígitos');
+    if (!pickerPin || pickerPin.length < 4) {
+      setAuthError('Ingresá tu PIN de 4 a 6 dígitos');
       return;
     }
 
@@ -226,7 +232,11 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
       if (data.success) {
         setUserId(data.user.id);
         setUserName(data.user.name);
-        await startSession(data.user.id);
+        if (data.requirePinChange) {
+          setStep('pinChange');
+        } else {
+          await startSession(data.user.id);
+        }
       } else {
         setAuthError(data.error || 'PIN incorrecto');
         setPickerPin('');
@@ -235,6 +245,46 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
       setAuthError('Error de conexión');
     } finally {
       setAuthLoading(false);
+    }
+  }
+
+  // Cambio de PIN obligatorio
+  async function handlePinChange(e: React.FormEvent) {
+    e.preventDefault();
+    setPinChangeError('');
+
+    if (!newPin || !/^\d{6}$/.test(newPin)) {
+      setPinChangeError('El nuevo PIN debe ser de exactamente 6 dígitos');
+      return;
+    }
+    if (newPin !== confirmPin) {
+      setPinChangeError('Los PINs no coinciden');
+      return;
+    }
+    if (newPin === pickerPin) {
+      setPinChangeError('El nuevo PIN debe ser diferente al actual');
+      return;
+    }
+
+    setPinChangeLoading(true);
+    try {
+      const res = await fetch('/api/picking/auth', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, currentPin: pickerPin, newPin }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setPickerPin(newPin);
+        await startSession(userId);
+      } else {
+        setPinChangeError(data.error || 'Error al cambiar PIN');
+      }
+    } catch {
+      setPinChangeError('Error de conexión');
+    } finally {
+      setPinChangeLoading(false);
     }
   }
 
@@ -510,7 +560,7 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
               value={pickerPin}
               onChange={(e) => setPickerPin(e.target.value.replace(/\D/g, ''))}
               placeholder="••••"
-              maxLength={4}
+              maxLength={6}
               inputMode="numeric"
               autoFocus
               className="w-full px-4 py-3 border-2 rounded-xl text-2xl text-center tracking-[0.5em] focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -525,7 +575,7 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
             <div className="flex gap-2">
               <button
                 type="submit"
-                disabled={authLoading || pickerPin.length !== 4}
+                disabled={authLoading || pickerPin.length < 4}
                 className="flex-1 bg-blue-600 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50"
               >
                 {authLoading ? 'Verificando...' : 'Empezar'}
@@ -538,6 +588,69 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
                 Cancelar
               </button>
             </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // === PIN CHANGE: Cambio obligatorio a 6 dígitos ===
+  if (step === 'pinChange') {
+    return (
+      <div className="print:hidden mt-4">
+        <div className="bg-white rounded-xl shadow-lg border p-5">
+          <div className="text-center mb-4">
+            <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-2">
+              <svg className="w-7 h-7 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-bold text-gray-900">Hola {userName}!</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Por seguridad, necesitás cambiar tu PIN a <strong>6 dígitos</strong>
+            </p>
+          </div>
+
+          <form onSubmit={handlePinChange} className="space-y-3">
+            <div>
+              <label className="text-xs font-medium text-gray-600">Nuevo PIN (6 dígitos)</label>
+              <input
+                type="password"
+                value={newPin}
+                onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                placeholder="••••••"
+                maxLength={6}
+                inputMode="numeric"
+                autoFocus
+                className="w-full mt-1 px-4 py-3 border-2 rounded-xl text-2xl text-center tracking-[0.5em] focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Repetir nuevo PIN</label>
+              <input
+                type="password"
+                value={confirmPin}
+                onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
+                placeholder="••••••"
+                maxLength={6}
+                inputMode="numeric"
+                className="w-full mt-1 px-4 py-3 border-2 rounded-xl text-2xl text-center tracking-[0.5em] focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+              />
+            </div>
+
+            {pinChangeError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-center">
+                <span className="text-red-700 text-sm">{pinChangeError}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={pinChangeLoading || newPin.length !== 6 || confirmPin.length !== 6}
+              className="w-full bg-amber-600 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 hover:bg-amber-700 transition-colors"
+            >
+              {pinChangeLoading ? 'Guardando...' : 'Cambiar PIN y continuar'}
+            </button>
           </form>
         </div>
       </div>

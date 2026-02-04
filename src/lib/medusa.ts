@@ -291,7 +291,7 @@ async function fetchAllOrders(): Promise<void> {
 
   while (hasMore) {
     const response = await medusaRequest<{ orders: unknown[]; count: number; offset: number; limit: number }>(
-      `/admin/orders?limit=${PAGE_SIZE}&offset=${currentOffset}&fields=+shipping_address.*,+customer.*,+items.quantity,+shipping_methods.*`
+      `/admin/orders?limit=${PAGE_SIZE}&offset=${currentOffset}&fields=+shipping_address.*,+customer.*,+items.*,+items.variant.*,+items.variant.product.*,+shipping_methods.*`
     );
 
     const pageOrders = response.orders || [];

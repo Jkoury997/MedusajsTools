@@ -7,6 +7,9 @@ export interface IPickingUser extends Document {
   name: string;
   pin: string; // hasheado
   active: boolean;
+  role: 'picker' | 'store';
+  storeId?: string;   // ID de la tienda (solo para role=store)
+  storeName?: string;  // Nombre de la tienda (solo para role=store)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -16,6 +19,9 @@ const PickingUserSchema = new Schema<IPickingUser>(
     name: { type: String, required: true },
     pin: { type: String, required: true, unique: true },
     active: { type: Boolean, default: true },
+    role: { type: String, enum: ['picker', 'store'], default: 'picker' },
+    storeId: { type: String },
+    storeName: { type: String },
   },
   { timestamps: true }
 );
@@ -107,6 +113,55 @@ const PickingSessionSchema = new Schema<IPickingSession>(
   { timestamps: true }
 );
 
+// ==================== STORE (Tiendas) ====================
+
+export interface IStore extends Document {
+  externalId: string;  // ID que viene de Medusa (data.store.id)
+  name: string;
+  address: string;
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const StoreSchema = new Schema<IStore>(
+  {
+    externalId: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
+    address: { type: String, default: '' },
+    active: { type: Boolean, default: true },
+  },
+  { timestamps: true }
+);
+
+// ==================== STORE DELIVERY ====================
+
+export interface IStoreDelivery extends Document {
+  orderId: string;
+  orderDisplayId: number;
+  storeId: string;
+  storeName: string;
+  deliveredByUserId: mongoose.Types.ObjectId;
+  deliveredByName: string;
+  deliveredAt: Date;
+  shipmentCreated: boolean;
+  createdAt: Date;
+}
+
+const StoreDeliverySchema = new Schema<IStoreDelivery>(
+  {
+    orderId: { type: String, required: true, index: true },
+    orderDisplayId: { type: Number, required: true },
+    storeId: { type: String, required: true, index: true },
+    storeName: { type: String, required: true },
+    deliveredByUserId: { type: Schema.Types.ObjectId, ref: 'PickingUser', required: true },
+    deliveredByName: { type: String, required: true },
+    deliveredAt: { type: Date, default: Date.now },
+    shipmentCreated: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+
 // ==================== AUDIT LOG ====================
 
 export type AuditAction =
@@ -118,10 +173,12 @@ export type AuditAction =
   | 'order_pack'
   | 'fulfillment_create'
   | 'fulfillment_error'
+  | 'order_deliver'
   | 'user_create'
   | 'user_update'
   | 'user_delete'
-  | 'admin_login';
+  | 'admin_login'
+  | 'store_login';
 
 export interface IAuditLog extends Document {
   action: AuditAction;
@@ -189,3 +246,9 @@ export const PickingSession: Model<IPickingSession> =
 
 export const AuditLog: Model<IAuditLog> =
   mongoose.models.AuditLog || mongoose.model<IAuditLog>('AuditLog', AuditLogSchema);
+
+export const StoreDelivery: Model<IStoreDelivery> =
+  mongoose.models.StoreDelivery || mongoose.model<IStoreDelivery>('StoreDelivery', StoreDeliverySchema);
+
+export const Store: Model<IStore> =
+  mongoose.models.Store || mongoose.model<IStore>('Store', StoreSchema);

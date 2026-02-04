@@ -61,7 +61,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
   try {
     await connectDB();
     const { userId } = await params;
-    const { name, pin, active } = await req.json();
+    const { name, pin, active, role, storeId, storeName } = await req.json();
 
     const updateData: Record<string, unknown> = {};
 
@@ -76,9 +76,9 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     }
 
     if (pin !== undefined) {
-      if (!/^\d{4}$/.test(pin)) {
+      if (!/^\d{4,6}$/.test(pin)) {
         return NextResponse.json(
-          { success: false, error: 'El PIN debe ser de 4 dígitos' },
+          { success: false, error: 'El PIN debe ser de 4 a 6 dígitos' },
           { status: 400 }
         );
       }
@@ -95,6 +95,12 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     if (active !== undefined) {
       updateData.active = active;
     }
+
+    if (role !== undefined) {
+      updateData.role = role === 'store' ? 'store' : 'picker';
+    }
+    if (storeId !== undefined) updateData.storeId = storeId?.trim() || '';
+    if (storeName !== undefined) updateData.storeName = storeName?.trim() || '';
 
     const user = await PickingUser.findByIdAndUpdate(
       userId,

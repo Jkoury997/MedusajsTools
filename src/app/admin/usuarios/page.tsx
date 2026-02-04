@@ -7,6 +7,9 @@ interface PickingUser {
   _id: string;
   name: string;
   active: boolean;
+  role?: 'picker' | 'store';
+  storeId?: string;
+  storeName?: string;
   createdAt: string;
 }
 
@@ -42,6 +45,14 @@ export default function AdminUsuariosPage() {
   const [name, setName] = useState('');
   const [pin, setPin] = useState('');
   const [active, setActive] = useState(true);
+  const [role, setRole] = useState<'picker' | 'store'>('picker');
+  const [storeId, setStoreId] = useState('');
+  const [storeName, setStoreName] = useState('');
+  const [availableStores, setAvailableStores] = useState<{ id: string; name: string; address: string }[]>([]);
+  const [showNewStore, setShowNewStore] = useState(false);
+  const [newStoreName, setNewStoreName] = useState('');
+  const [newStoreAddress, setNewStoreAddress] = useState('');
+  const [savingStore, setSavingStore] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
@@ -50,15 +61,58 @@ export default function AdminUsuariosPage() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchUsers();
+      fetchStores();
     }
   }, [isAuthenticated]);
+
+  async function fetchStores() {
+    try {
+      const res = await fetch('/api/picking/stores');
+      const data = await res.json();
+      if (data.success) setAvailableStores(data.stores);
+    } catch { /* silent */ }
+  }
+
+  async function handleCreateStore() {
+    if (!newStoreName.trim()) {
+      setError('El nombre de la tienda es requerido');
+      return;
+    }
+    setSavingStore(true);
+    setError('');
+    try {
+      const res = await fetch('/api/picking/stores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newStoreName.trim(), address: newStoreAddress.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Seleccionar la tienda recién creada
+        setStoreId(data.store.id);
+        setStoreName(data.store.name);
+        setNewStoreName('');
+        setNewStoreAddress('');
+        setShowNewStore(false);
+        // Refrescar lista
+        await fetchStores();
+        setSuccess('Tienda creada correctamente');
+      } else {
+        setError(data.error || 'Error al crear tienda');
+      }
+    } catch {
+      setError('Error de conexión');
+    } finally {
+      setSavingStore(false);
+    }
+  }
 
   async function handleAdminAuth(e: React.FormEvent) {
     e.preventDefault();
     setAuthError('');
 
-    if (!adminPin || adminPin.length !== 4) {
-      setAuthError('Ingresá un PIN de 4 dígitos');
+    if (!adminPin || adminPin.length < 4) {
+      setAuthError('Ingresá un PIN de 4 a 6 dígitos');
       return;
     }
 
@@ -122,6 +176,9 @@ export default function AdminUsuariosPage() {
     setName('');
     setPin('');
     setActive(true);
+    setRole('picker');
+    setStoreId('');
+    setStoreName('');
     setError('');
     setSuccess('');
     setShowForm(true);
@@ -132,6 +189,9 @@ export default function AdminUsuariosPage() {
     setName(user.name);
     setPin('');
     setActive(user.active);
+    setRole(user.role || 'picker');
+    setStoreId(user.storeId || '');
+    setStoreName(user.storeName || '');
     setError('');
     setSuccess('');
     setShowForm(true);
@@ -147,13 +207,13 @@ export default function AdminUsuariosPage() {
       return;
     }
 
-    if (!editingUser && (!pin || !/^\d{4}$/.test(pin))) {
-      setError('El PIN debe ser de 4 dígitos');
+    if (!editingUser && (!pin || !/^\d{4,6}$/.test(pin))) {
+      setError('El PIN debe ser de 4 a 6 dígitos');
       return;
     }
 
-    if (editingUser && pin && !/^\d{4}$/.test(pin)) {
-      setError('El PIN debe ser de 4 dígitos');
+    if (editingUser && pin && !/^\d{4,6}$/.test(pin)) {
+      setError('El PIN debe ser de 4 a 6 dígitos');
       return;
     }
 
@@ -161,8 +221,12 @@ export default function AdminUsuariosPage() {
     try {
       if (editingUser) {
         // Editar
-        const body: Record<string, unknown> = { name: name.trim(), active };
+        const body: Record<string, unknown> = { name: name.trim(), active, role };
         if (pin) body.pin = pin;
+        if (role === 'store') {
+          body.storeId = storeId;
+          body.storeName = storeName;
+        }
 
         const res = await fetch(`/api/picking/users/${editingUser._id}`, {
           method: 'PUT',
@@ -180,10 +244,16 @@ export default function AdminUsuariosPage() {
         }
       } else {
         // Crear
+        const body: Record<string, unknown> = { name: name.trim(), pin, role };
+        if (role === 'store') {
+          body.storeId = storeId;
+          body.storeName = storeName;
+        }
+
         const res = await fetch('/api/picking/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name.trim(), pin }),
+          body: JSON.stringify(body),
         });
         const data = await res.json();
 
@@ -248,7 +318,7 @@ export default function AdminUsuariosPage() {
               value={adminPin}
               onChange={(e) => setAdminPin(e.target.value.replace(/\D/g, ''))}
               placeholder="••••"
-              maxLength={4}
+              maxLength={6}
               inputMode="numeric"
               autoFocus
               className="w-full px-4 py-3 border-2 rounded-xl text-2xl text-center tracking-[0.5em] focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
@@ -262,7 +332,7 @@ export default function AdminUsuariosPage() {
 
             <button
               type="submit"
-              disabled={authLoading || adminPin.length !== 4}
+              disabled={authLoading || adminPin.length < 4}
               className="w-full bg-purple-600 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors hover:bg-purple-700"
             >
               {authLoading ? 'Verificando...' : 'Ingresar'}
@@ -339,16 +409,116 @@ export default function AdminUsuariosPage() {
                 />
               </div>
 
+              {/* Tipo de usuario */}
+              <div>
+                <label className="text-xs font-medium text-gray-700">Tipo</label>
+                <div className="flex gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setRole('picker')}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      role === 'picker' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    Picker
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRole('store')}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      role === 'store' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    Tienda
+                  </button>
+                </div>
+              </div>
+
+              {/* Campos de tienda */}
+              {role === 'store' && (
+                <div className="bg-emerald-50 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-gray-700">Tienda asignada</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewStore(!showNewStore)}
+                      className="text-xs text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1"
+                    >
+                      {showNewStore ? (
+                        <>✕ Cancelar</>
+                      ) : (
+                        <>
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                          Nueva tienda
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {showNewStore ? (
+                    <div className="space-y-2 bg-white rounded-lg p-3 border border-emerald-200">
+                      <p className="text-xs text-gray-500 font-medium">Crear nueva tienda</p>
+                      <input
+                        type="text"
+                        value={newStoreName}
+                        onChange={(e) => setNewStoreName(e.target.value)}
+                        placeholder="Nombre de la tienda"
+                        className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      />
+                      <input
+                        type="text"
+                        value={newStoreAddress}
+                        onChange={(e) => setNewStoreAddress(e.target.value)}
+                        placeholder="Dirección (opcional)"
+                        className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleCreateStore}
+                        disabled={savingStore || !newStoreName.trim()}
+                        className="w-full bg-emerald-600 text-white py-2 rounded-lg text-xs font-medium disabled:opacity-50 hover:bg-emerald-700 transition-colors"
+                      >
+                        {savingStore ? 'Creando...' : 'Crear y seleccionar'}
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <select
+                        value={storeId}
+                        onChange={(e) => {
+                          const selected = availableStores.find(s => s.id === e.target.value);
+                          setStoreId(e.target.value);
+                          setStoreName(selected?.name || '');
+                        }}
+                        className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white"
+                      >
+                        <option value="">Seleccionar tienda...</option>
+                        {availableStores.map(s => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}{s.address ? ` — ${s.address}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {availableStores.length === 0 && (
+                        <p className="text-xs text-gray-400 text-center py-1">No hay tiendas. Creá una con el botón &quot;Nueva tienda&quot;.</p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="text-xs font-medium text-gray-700">
-                  PIN (4 dígitos){editingUser && ' - dejar vacío para no cambiar'}
+                  PIN (4 a 6 dígitos){editingUser && ' - dejar vacío para no cambiar'}
                 </label>
                 <input
                   type="password"
                   value={pin}
                   onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
                   placeholder={editingUser ? '****' : '1234'}
-                  maxLength={4}
+                  maxLength={6}
                   inputMode="numeric"
                   className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 tracking-widest text-center text-xl"
                 />
@@ -435,19 +605,28 @@ export default function AdminUsuariosPage() {
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${
-                          user.active ? 'bg-blue-500' : 'bg-gray-400'
+                          !user.active ? 'bg-gray-400' : user.role === 'store' ? 'bg-emerald-500' : 'bg-blue-500'
                         }`}>
-                          {user.name.charAt(0).toUpperCase()}
+                          {user.role === 'store' ? '🏪' : user.name.charAt(0).toUpperCase()}
                         </div>
                         <div>
                           <p className="font-medium text-gray-900">{user.name}</p>
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            user.active
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-gray-100 text-gray-500'
-                          }`}>
-                            {user.active ? 'Activo' : 'Inactivo'}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              user.active
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-gray-100 text-gray-500'
+                            }`}>
+                              {user.active ? 'Activo' : 'Inactivo'}
+                            </span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              user.role === 'store'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {user.role === 'store' ? `Tienda: ${user.storeName || '?'}` : 'Picker'}
+                            </span>
+                          </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-1">

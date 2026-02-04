@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
-    const { name, pin } = await req.json();
+    const { name, pin, role, storeId, storeName } = await req.json();
 
     if (!name?.trim()) {
       return NextResponse.json(
@@ -36,9 +36,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!pin || !/^\d{4}$/.test(pin)) {
+    if (!pin || !/^\d{4,6}$/.test(pin)) {
       return NextResponse.json(
-        { success: false, error: 'El PIN debe ser de 4 dígitos' },
+        { success: false, error: 'El PIN debe ser de 4 a 6 dígitos' },
         { status: 400 }
       );
     }
@@ -52,17 +52,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Validar datos de tienda si el rol es store
+    const userRole = role === 'store' ? 'store' : 'picker';
+    if (userRole === 'store' && (!storeId?.trim() || !storeName?.trim())) {
+      return NextResponse.json(
+        { success: false, error: 'Para usuarios tienda se requiere ID y nombre de tienda' },
+        { status: 400 }
+      );
+    }
+
     const user = await PickingUser.create({
       name: name.trim(),
       pin: hashPin(pin),
       active: true,
+      role: userRole,
+      ...(userRole === 'store' ? { storeId: storeId.trim(), storeName: storeName.trim() } : {}),
     });
 
     audit({
       action: 'user_create',
       userName: 'Admin',
-      details: `Usuario creado: ${user.name}`,
-      metadata: { newUserId: user._id.toString(), newUserName: user.name },
+      details: `Usuario creado: ${user.name} (${userRole}${userRole === 'store' ? ` - ${storeName}` : ''})`,
+      metadata: { newUserId: user._id.toString(), newUserName: user.name, role: userRole, storeName: storeName || undefined },
     });
 
     return NextResponse.json({

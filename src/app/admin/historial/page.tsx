@@ -123,8 +123,8 @@ export default function HistorialPage() {
   async function handleAdminAuth(e: React.FormEvent) {
     e.preventDefault();
     setAuthError('');
-    if (!adminPin || adminPin.length !== 4) {
-      setAuthError('Ingresa un PIN de 4 digitos');
+    if (!adminPin || adminPin.length < 4) {
+      setAuthError('Ingresá un PIN de 4 a 6 dígitos');
       return;
     }
     setAuthLoading(true);
@@ -202,7 +202,7 @@ export default function HistorialPage() {
               value={adminPin}
               onChange={(e) => setAdminPin(e.target.value.replace(/\D/g, ''))}
               placeholder="----"
-              maxLength={4}
+              maxLength={6}
               inputMode="numeric"
               autoFocus
               className="w-full px-4 py-3 border-2 rounded-xl text-2xl text-center tracking-[0.5em] focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
@@ -214,7 +214,7 @@ export default function HistorialPage() {
             )}
             <button
               type="submit"
-              disabled={authLoading || adminPin.length !== 4}
+              disabled={authLoading || adminPin.length < 4}
               className="w-full bg-purple-600 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors hover:bg-purple-700"
             >
               {authLoading ? 'Verificando...' : 'Ingresar'}
