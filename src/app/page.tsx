@@ -6,6 +6,7 @@ import LogoutButton from '@/components/LogoutButton';
 import OrderTabs from '@/components/OrderTabs';
 import { connectDB } from '@/lib/mongodb/connection';
 import { PickingSession } from '@/lib/mongodb/models';
+import { isExpressShipping } from '@/lib/shipping';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -63,17 +64,14 @@ interface PickingInfo {
   progressPercent: number;
 }
 
-// Detecta si el envío es rápido/express por nombre
+// Detecta tipo de envío y si es express
 function getShippingInfo(order: Order): { name: string; isExpress: boolean } | null {
   const methods = order.shipping_methods;
   if (!methods || methods.length === 0) return null;
   const method = methods[0];
   const name = method.name || method.shipping_option?.name || '';
   if (!name) return null;
-  const lower = name.toLowerCase();
-  const isExpress = lower.includes('rapido') || lower.includes('rápido') || lower.includes('express')
-    || lower.includes('urgente') || lower.includes('24') || lower.includes('priorit');
-  return { name, isExpress };
+  return { name, isExpress: isExpressShipping(method.shipping_option_id) };
 }
 
 function OrderCard({ order, estado, pickingInfo }: { order: Order; estado: FulfillmentFilter; pickingInfo?: PickingInfo }) {

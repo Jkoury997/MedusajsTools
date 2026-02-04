@@ -3,6 +3,8 @@ import { getOrderById, Order, LineItem } from '@/lib/medusa';
 import PrintButton from './PrintButton';
 import PickingInterface from './PickingInterface';
 import StoreLabel from './StoreLabel';
+import DeliverButton from './DeliverButton';
+import { isFactoryPickup as checkFactoryPickup } from '@/lib/shipping';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -97,6 +99,13 @@ function formatProvince(provinceCode: string): string {
     'ar-t': 'Tucumán',
   };
   return provinces[provinceCode.toLowerCase()] || provinceCode;
+}
+
+// Detecta si es retiro en fábrica
+function isFactoryPickup(order: Order): boolean {
+  const methods = order.shipping_methods;
+  if (!methods || methods.length === 0) return false;
+  return checkFactoryPickup(methods[0].shipping_option_id);
 }
 
 // Detecta si el envío es retiro en tienda y devuelve datos de la tienda
@@ -481,6 +490,15 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
             </div>
           );
         })()}
+
+        {/* Botón entregar — retiro en fábrica */}
+        <DeliverButton
+          orderId={order.id}
+          orderDisplayId={order.display_id}
+          customerName={getCustomerName(order)}
+          isFactoryPickup={isFactoryPickup(order)}
+          fulfillmentStatus={order.fulfillment_status || 'not_fulfilled'}
+        />
 
         {/* Picking Interface */}
         <PickingInterface

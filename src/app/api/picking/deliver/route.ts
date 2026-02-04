@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
 import { PickingUser, StoreDelivery, audit } from '@/lib/mongodb/models';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
+import { isFactoryPickup } from '@/lib/shipping';
 
 const ADMIN_PIN = process.env.ADMIN_PIN || '9999';
 
@@ -18,15 +19,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validar usuario: acepta store o admin
+    // Validar usuario: acepta store, picker (solo fábrica) o admin
     let userName = 'Admin';
+    let userRole = 'admin';
     let userStoreId = '';
     let userStoreName = '';
     let userIdStr = userId;
 
     if (userId === 'admin') {
-      // Admin — permitido
       userName = 'Admin';
+      userRole = 'admin';
     } else {
       const user = await PickingUser.findById(userId);
       if (!user || !user.active || (user.role !== 'store' && user.role !== 'picker')) {
@@ -36,6 +38,7 @@ export async function POST(req: NextRequest) {
         );
       }
       userName = user.name;
+      userRole = user.role;
       userStoreId = user.storeId || '';
       userStoreName = user.storeName || '';
       userIdStr = user._id.toString();
@@ -55,11 +58,23 @@ export async function POST(req: NextRequest) {
     let deliverError = '';
 
     try {
-      // Obtener el pedido con fulfillments
+      // Obtener el pedido con fulfillments y shipping methods
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const orderData = await medusaRequest<{ order: any }>(
-        `/admin/orders/${orderId}?fields=+fulfillments.*`
+        `/admin/orders/${orderId}?fields=+fulfillments.*,+shipping_methods.*`
       );
+
+      // Si es picker, solo puede entregar retiro en fábrica
+      if (userRole === 'picker') {
+        const methods = orderData.order.shipping_methods || [];
+        const method = methods[0];
+        if (!isFactoryPickup(method?.shipping_option_id)) {
+          return NextResponse.json(
+            { success: false, error: 'Solo podés entregar pedidos de retiro en fábrica' },
+            { status: 403 }
+          );
+        }
+      }
 
       const order = orderData.order;
       const fulfillmentStatus = order.fulfillment_status || '';
