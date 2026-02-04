@@ -127,7 +127,7 @@ export async function medusaRequest<T>(endpoint: string, options: MedusaRequestO
       body: errorText,
       endpoint,
     });
-    throw new Error(`Medusa API error: ${response.status} ${response.statusText}`);
+    throw new Error(`Medusa API error: ${response.status} ${response.statusText} - ${errorText}`);
   }
 
   const result = await response.json();
@@ -268,7 +268,7 @@ export type FulfillmentFilter = 'preparar' | 'enviar' | 'enviados';
 const fulfillmentFilterMap: Record<FulfillmentFilter, string[]> = {
   preparar: ['not_fulfilled', 'partially_fulfilled'],
   enviar: ['fulfilled'],
-  enviados: ['shipped', 'partially_shipped'],
+  enviados: ['shipped', 'partially_shipped', 'delivered'],
 };
 
 // Caché de TODOS los pedidos pagados (30 segundos)

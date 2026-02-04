@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
 import { PickingUser, hashPin, audit } from '@/lib/mongodb/models';
 
+const ADMIN_PIN = process.env.ADMIN_PIN || '9999';
+
 // POST /api/picking/auth - Validar PIN
 export async function POST(req: NextRequest) {
   try {
@@ -13,6 +15,18 @@ export async function POST(req: NextRequest) {
         { success: false, error: 'PIN inválido' },
         { status: 400 }
       );
+    }
+
+    // Admin puede hacer picking también
+    if (pin === ADMIN_PIN) {
+      return NextResponse.json({
+        success: true,
+        user: {
+          id: 'admin',
+          name: 'Admin',
+        },
+        requirePinChange: false,
+      });
     }
 
     const user = await PickingUser.findOne({

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { getPaidOrders, Order, FulfillmentFilter } from '@/lib/medusa';
 import RefreshButton from '@/components/RefreshButton';
+import LogoutButton from '@/components/LogoutButton';
 import OrderTabs from '@/components/OrderTabs';
 import { connectDB } from '@/lib/mongodb/connection';
 import { PickingSession } from '@/lib/mongodb/models';
@@ -41,6 +42,7 @@ function getFulfillmentBadge(status: string): { label: string; className: string
     fulfilled: { label: 'Preparado', className: 'bg-green-500 text-white' },
     partially_shipped: { label: 'Enviando', className: 'bg-blue-500 text-white' },
     shipped: { label: 'Enviado', className: 'bg-blue-600 text-white' },
+    delivered: { label: 'Entregado', className: 'bg-purple-600 text-white' },
     canceled: { label: 'Cancelado', className: 'bg-gray-500 text-white' },
   };
   return statusMap[status] || { label: status || 'Pendiente', className: 'bg-gray-500 text-white' };
@@ -325,7 +327,10 @@ export default async function HomePage({ searchParams }: PageProps) {
           <div>
             <h2 className="text-lg font-bold text-gray-900">{title}</h2>
           </div>
-          <RefreshButton />
+          <div className="flex items-center gap-1">
+            <RefreshButton />
+            <LogoutButton />
+          </div>
         </div>
 
         {/* Pestañas - se muestran inmediatamente */}

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <rect width="180" height="180" rx="40" fill="#ff75a8"/>
+  <text x="90" y="118" text-anchor="middle" font-family="Arial,sans-serif" font-weight="bold" font-size="80" fill="white">MK</text>
+  <path d="M35 38h110" stroke="white" stroke-width="6" stroke-linecap="round" opacity="0.4"/>
+  <path d="M35 142h110" stroke="white" stroke-width="6" stroke-linecap="round" opacity="0.4"/>
+</svg>

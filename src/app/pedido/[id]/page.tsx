@@ -423,7 +423,7 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
         </div>
 
         {/* Lista de artículos en pantalla - solo cuando NO hay picking (pedidos ya preparados/enviados) */}
-        {(order.fulfillment_status === 'fulfilled' || order.fulfillment_status === 'shipped' || order.fulfillment_status === 'partially_shipped') && (
+        {(order.fulfillment_status === 'fulfilled' || order.fulfillment_status === 'shipped' || order.fulfillment_status === 'partially_shipped' || order.fulfillment_status === 'delivered') && (
           <div className="print:hidden space-y-2 mb-4">
             <h3 className="text-sm font-bold text-gray-700 mb-2">
               Artículos ({sortedItems.reduce((sum, item) => sum + item.quantity, 0)})
@@ -466,7 +466,7 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
         )}
 
         {/* Etiqueta de Tienda - solo para pedidos preparados con retiro en tienda */}
-        {(order.fulfillment_status === 'fulfilled' || order.fulfillment_status === 'shipped' || order.fulfillment_status === 'partially_shipped') && (() => {
+        {(order.fulfillment_status === 'fulfilled' || order.fulfillment_status === 'shipped' || order.fulfillment_status === 'partially_shipped' || order.fulfillment_status === 'delivered') && (() => {
           const storeInfo = getStorePickupInfo(order);
           if (!storeInfo) return null;
           return (

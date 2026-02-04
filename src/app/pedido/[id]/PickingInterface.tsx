@@ -507,7 +507,7 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
   }
 
   // Don't show picking for already fulfilled orders
-  if (fulfillmentStatus === 'fulfilled' || fulfillmentStatus === 'shipped' || fulfillmentStatus === 'partially_shipped') {
+  if (fulfillmentStatus === 'fulfilled' || fulfillmentStatus === 'shipped' || fulfillmentStatus === 'partially_shipped' || fulfillmentStatus === 'delivered') {
     return null;
   }
 

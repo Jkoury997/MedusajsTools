@@ -3,6 +3,8 @@ import { connectDB } from '@/lib/mongodb/connection';
 import { PickingUser, StoreDelivery, audit } from '@/lib/mongodb/models';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
 
+const ADMIN_PIN = process.env.ADMIN_PIN || '9999';
+
 // POST /api/picking/deliver - Marcar pedido como entregado en tienda
 export async function POST(req: NextRequest) {
   try {
@@ -16,13 +18,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validar que sea un usuario de tienda activo
-    const user = await PickingUser.findById(userId);
-    if (!user || !user.active || user.role !== 'store') {
-      return NextResponse.json(
-        { success: false, error: 'Usuario no autorizado' },
-        { status: 401 }
-      );
+    // Validar usuario: acepta store o admin
+    let userName = 'Admin';
+    let userStoreId = '';
+    let userStoreName = '';
+    let userIdStr = userId;
+
+    if (userId === 'admin') {
+      // Admin — permitido
+      userName = 'Admin';
+    } else {
+      const user = await PickingUser.findById(userId);
+      if (!user || !user.active || (user.role !== 'store' && user.role !== 'picker')) {
+        return NextResponse.json(
+          { success: false, error: 'Usuario no autorizado' },
+          { status: 401 }
+        );
+      }
+      userName = user.name;
+      userStoreId = user.storeId || '';
+      userStoreName = user.storeName || '';
+      userIdStr = user._id.toString();
     }
 
     // Verificar que no se haya entregado ya
@@ -34,51 +50,69 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Crear shipment en Medusa (marca como shipped)
-    let shipmentCreated = false;
-    let shipmentError = '';
+    // Marcar como delivered en Medusa
+    let delivered = false;
+    let deliverError = '';
 
     try {
-      // Obtener el pedido para tener los fulfillments
+      // Obtener el pedido con fulfillments
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const orderData = await medusaRequest<{ order: any }>(
-        `/admin/orders/${orderId}?fields=+fulfillments.*,+fulfillments.items.*`
+        `/admin/orders/${orderId}?fields=+fulfillments.*`
       );
 
       const order = orderData.order;
+      const fulfillmentStatus = order.fulfillment_status || '';
       const fulfillments = order.fulfillments || [];
 
-      if (fulfillments.length === 0) {
-        shipmentError = 'No hay fulfillments para crear shipment';
+      console.log('[deliver] Order ID:', orderId);
+      console.log('[deliver] Fulfillment status:', fulfillmentStatus);
+      console.log('[deliver] Fulfillments count:', fulfillments.length);
+
+      // Si ya está delivered, no hacer nada
+      if (fulfillmentStatus === 'delivered') {
+        console.log('[deliver] Pedido ya está delivered');
+        delivered = true;
+      } else if (fulfillments.length === 0) {
+        deliverError = 'No hay fulfillments para marcar como entregado';
       } else {
-        // Crear shipment para el primer fulfillment
-        const fulfillment = fulfillments[0];
-        await medusaRequest(`/admin/orders/${orderId}/fulfillments/${fulfillment.id}/shipments`, {
-          method: 'POST',
-          body: {
-            items: fulfillment.items?.map((item: { id: string; quantity: number }) => ({
-              id: item.id,
-              quantity: item.quantity,
-            })) || [],
-          },
-        });
-        shipmentCreated = true;
+        // Marcar cada fulfillment como delivered
+        for (const fulfillment of fulfillments) {
+          if (fulfillment.delivered_at) {
+            console.log('[deliver] Fulfillment', fulfillment.id, 'ya está delivered');
+            continue;
+          }
+          console.log('[deliver] Marcando fulfillment', fulfillment.id, 'como delivered');
+          await medusaRequest(`/admin/orders/${orderId}/fulfillments/${fulfillment.id}/mark-as-delivered`, {
+            method: 'POST',
+            body: {},
+          });
+        }
+        delivered = true;
       }
     } catch (error) {
-      shipmentError = error instanceof Error ? error.message : 'Error al crear shipment en Medusa';
-      console.error('[deliver] Medusa shipment error:', error);
+      deliverError = error instanceof Error ? error.message : 'Error al marcar como entregado en Medusa';
+      console.error('[deliver] Medusa error:', error);
+    }
+
+    // Si no se pudo marcar en Medusa, no permitir la entrega
+    if (!delivered) {
+      return NextResponse.json(
+        { success: false, error: `No se pudo marcar como entregado en Medusa: ${deliverError}` },
+        { status: 500 }
+      );
     }
 
     // Registrar entrega en MongoDB
     const delivery = await StoreDelivery.create({
       orderId,
       orderDisplayId: orderDisplayId || 0,
-      storeId: user.storeId || '',
-      storeName: user.storeName || '',
-      deliveredByUserId: user._id,
-      deliveredByName: user.name,
+      storeId: userStoreId,
+      storeName: userStoreName,
+      deliveredByUserId: userIdStr,
+      deliveredByName: userName,
       deliveredAt: new Date(),
-      shipmentCreated,
+      shipmentCreated: delivered,
     });
 
     // Invalidar cache de pedidos
@@ -87,12 +121,12 @@ export async function POST(req: NextRequest) {
     // Audit log
     audit({
       action: 'order_deliver',
-      userName: user.name,
-      userId: user._id.toString(),
+      userName,
+      userId: userIdStr,
       orderId,
       orderDisplayId,
-      details: `Pedido #${orderDisplayId} entregado en tienda ${user.storeName} por ${user.name}${shipmentCreated ? '' : ` (shipment error: ${shipmentError})`}`,
-      metadata: { storeId: user.storeId, storeName: user.storeName, shipmentCreated, shipmentError: shipmentError || undefined },
+      details: `Pedido #${orderDisplayId} entregado por ${userName}${userStoreName ? ` en tienda ${userStoreName}` : ''}`,
+      metadata: { storeId: userStoreId, storeName: userStoreName, delivered },
     });
 
     return NextResponse.json({
@@ -102,8 +136,7 @@ export async function POST(req: NextRequest) {
         deliveredAt: delivery.deliveredAt,
         deliveredByName: delivery.deliveredByName,
         storeName: delivery.storeName,
-        shipmentCreated,
-        shipmentError: shipmentError || undefined,
+        delivered,
       },
     });
   } catch (error) {

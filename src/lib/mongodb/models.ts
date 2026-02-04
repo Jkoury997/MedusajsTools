@@ -178,7 +178,8 @@ export type AuditAction =
   | 'user_update'
   | 'user_delete'
   | 'admin_login'
-  | 'store_login';
+  | 'store_login'
+  | 'login';
 
 export interface IAuditLog extends Document {
   action: AuditAction;

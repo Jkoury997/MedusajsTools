@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
-import { PickingUser, hashPin, audit } from '@/lib/mongodb/models';
+import { PickingUser, Store, hashPin, audit } from '@/lib/mongodb/models';
+
+const ADMIN_PIN = process.env.ADMIN_PIN || '9999';
 
 // POST /api/picking/store-auth - Login de usuario tienda
 export async function POST(req: NextRequest) {
@@ -13,6 +15,22 @@ export async function POST(req: NextRequest) {
         { success: false, error: 'PIN de 4 a 6 dígitos requerido' },
         { status: 400 }
       );
+    }
+
+    // Admin puede entrar a tienda — tomar la primera tienda disponible
+    if (pin === ADMIN_PIN) {
+      const firstStore = await Store.findOne({ name: { $exists: true, $ne: '' } });
+      return NextResponse.json({
+        success: true,
+        user: {
+          id: 'admin',
+          name: 'Admin',
+          role: 'admin',
+          storeId: firstStore?.externalId || 'admin',
+          storeName: firstStore?.name || 'Admin',
+        },
+        requirePinChange: false,
+      });
     }
 
     const user = await PickingUser.findOne({

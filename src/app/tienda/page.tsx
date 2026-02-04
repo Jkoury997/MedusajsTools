@@ -312,7 +312,7 @@ export default function TiendaPage() {
   }
 
   const pendientes = orders.filter(o => o.fulfillment_status === 'fulfilled');
-  const entregados = orders.filter(o => o.fulfillment_status === 'shipped' || o.fulfillment_status === 'partially_shipped');
+  const entregados = orders.filter(o => o.fulfillment_status === 'shipped' || o.fulfillment_status === 'partially_shipped' || o.fulfillment_status === 'delivered');
   const displayOrders = tab === 'pendientes' ? pendientes : entregados;
 
   return (

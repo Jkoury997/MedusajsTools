@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaidOrders } from '@/lib/medusa';
+import { connectDB } from '@/lib/mongodb/connection';
+import { StoreDelivery } from '@/lib/mongodb/models';
 
 // GET /api/picking/store-orders?storeId=xxx - Pedidos de retiro para una tienda
 export async function GET(req: NextRequest) {
@@ -12,6 +14,8 @@ export async function GET(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    await connectDB();
 
     // Traer pedidos fulfilled (para enviar) y shipped (enviados)
     const [fulfilled, shipped] = await Promise.all([
@@ -43,10 +47,23 @@ export async function GET(req: NextRequest) {
       return store.id === storeId;
     });
 
+    // Consultar entregas en MongoDB para estos pedidos
+    const orderIds = storeOrders.map((o: any) => o.id);
+    const deliveries = await StoreDelivery.find({ orderId: { $in: orderIds } }).lean();
+    const deliveredSet = new Set(deliveries.map((d: any) => d.orderId));
+
+    // Enriquecer pedidos: si MongoDB dice entregado pero Medusa no actualizó, marcarlo
+    const enrichedOrders = storeOrders.map((order: any) => {
+      if (deliveredSet.has(order.id) && order.fulfillment_status === 'fulfilled') {
+        return { ...order, fulfillment_status: 'shipped', _deliveredLocally: true };
+      }
+      return order;
+    });
+
     return NextResponse.json({
       success: true,
-      orders: storeOrders,
-      total: storeOrders.length,
+      orders: enrichedOrders,
+      total: enrichedOrders.length,
     });
   } catch (error) {
     console.error('[store-orders] Error:', error);

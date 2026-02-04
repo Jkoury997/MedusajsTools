@@ -39,7 +39,7 @@ export default function PrintButton({ orderId, orderDisplayId, orderItems, fulfi
   const [pinChangeError, setPinChangeError] = useState('');
   const [pinChangeLoading, setPinChangeLoading] = useState(false);
 
-  const isAlreadyFulfilled = fulfillmentStatus === 'fulfilled' || fulfillmentStatus === 'shipped' || fulfillmentStatus === 'partially_shipped';
+  const isAlreadyFulfilled = fulfillmentStatus === 'fulfilled' || fulfillmentStatus === 'shipped' || fulfillmentStatus === 'partially_shipped' || fulfillmentStatus === 'delivered';
 
   async function handlePrintClick() {
     // Si ya está preparado/enviado, imprimir directamente
