@@ -21,6 +21,9 @@ export async function POST(req: NextRequest) {
     await connectDB();
     const { pin } = await req.json();
 
+    // Detectar si es HTTPS para cookie secure
+    const isSecure = req.headers.get('x-forwarded-proto') === 'https' || req.url.startsWith('https');
+
     if (!pin || pin.length < 4) {
       return NextResponse.json(
         { success: false, error: 'PIN requerido (4-6 dígitos)' },
@@ -34,7 +37,7 @@ export async function POST(req: NextRequest) {
       const response = NextResponse.json({ success: true, user: { name: 'Admin', role: 'admin' } });
       response.cookies.set('picking-session', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: isSecure,
         sameSite: 'lax',
         maxAge: SESSION_DURATION / 1000,
         path: '/',
@@ -54,7 +57,7 @@ export async function POST(req: NextRequest) {
       });
       response.cookies.set('picking-session', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: isSecure,
         sameSite: 'lax',
         maxAge: SESSION_DURATION / 1000,
         path: '/',
@@ -77,11 +80,12 @@ export async function POST(req: NextRequest) {
 }
 
 // DELETE /api/picking/login - Logout
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
+  const isSecure = req.headers.get('x-forwarded-proto') === 'https' || req.url.startsWith('https');
   const response = NextResponse.json({ success: true });
   response.cookies.set('picking-session', '', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isSecure,
     sameSite: 'lax',
     maxAge: 0,
     path: '/',
