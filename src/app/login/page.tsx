@@ -17,6 +17,7 @@ function LoginForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    console.log('Submitting PIN:', pin);
 
     if (!pin || pin.length < 4) {
       setError('Ingresá tu PIN (4-6 dígitos)');
