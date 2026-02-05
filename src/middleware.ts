@@ -56,8 +56,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Permitir archivos estáticos de Next.js
-  if (pathname.startsWith('/_next') || pathname.startsWith('/favicon')) {
+  // Permitir archivos estáticos de Next.js y recursos
+  if (
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/favicon') ||
+    pathname.includes('.') // archivos con extensión (css, js, png, etc.)
+  ) {
     return NextResponse.next();
   }
 
