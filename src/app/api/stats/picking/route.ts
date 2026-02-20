@@ -26,6 +26,17 @@ export async function GET(req: NextRequest) {
       dateMatch.completedAt = { $gte: defaultFrom };
     }
 
+    // Filtro de fecha para cancelaciones (usan cancelledAt, no completedAt)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cancelDateMatch: Record<string, any> = {};
+    if (dateFrom || dateTo) {
+      cancelDateMatch.cancelledAt = {};
+      if (dateFrom) cancelDateMatch.cancelledAt.$gte = new Date(dateFrom);
+      if (dateTo) cancelDateMatch.cancelledAt.$lte = new Date(dateTo + 'T23:59:59.999Z');
+    } else {
+      cancelDateMatch.cancelledAt = { $gte: defaultFrom };
+    }
+
     // Hoy a las 00:00
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
@@ -68,9 +79,9 @@ export async function GET(req: NextRequest) {
         { $sort: { totalItemsPicked: -1 } },
       ]),
 
-      // 3. Stats de cancelaciones en el período
+      // 3. Stats de cancelaciones en el período (usan cancelledAt)
       PickingSession.aggregate([
-        { $match: { status: 'cancelled', ...dateMatch } },
+        { $match: { status: 'cancelled', ...cancelDateMatch } },
         {
           $group: {
             _id: { userId: '$userId', userName: '$userName' },
