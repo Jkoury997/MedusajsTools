@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx next lint)",
+      "Bash(npx next build:*)",
+      "Bash(curl:*)",
+      "mcp__plugin_medusa-dev_MedusaDocs__ask_medusa_question",
+      "Bash(taskkill:*)"
+    ]
+  }
+}

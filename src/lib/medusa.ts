@@ -322,7 +322,7 @@ async function fetchAllOrders(): Promise<void> {
 }
 
 // Obtiene todos los pedidos pagados (usa caché)
-async function getAllPaidOrders(): Promise<any[]> {
+export async function getAllPaidOrders(): Promise<any[]> {
   // Si el caché es válido, usarlo
   if (allPaidOrdersCache && Date.now() - allPaidOrdersCache.timestamp < ORDERS_CACHE_DURATION) {
     console.log(`[getPaidOrders] ⚡ Usando caché (${allPaidOrdersCache.orders.length} pedidos pagados)`);

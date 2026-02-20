@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const SESSION_SECRET = process.env.SESSION_SECRET || 'pickup-secret-2024';
+const STATS_API_KEY = process.env.STATS_API_KEY || '';
+
+// Prefijos que usan auth por API key (en vez de cookies)
+const API_KEY_PATHS = ['/api/stats/'];
 
 // Rutas públicas que no necesitan autenticación
 const PUBLIC_PATHS = [
@@ -63,6 +67,35 @@ export async function middleware(request: NextRequest) {
     pathname.includes('.') // archivos con extensión (css, js, png, etc.)
   ) {
     return NextResponse.next();
+  }
+
+  // Auth por API key para endpoints de stats (dashboard externo)
+  if (API_KEY_PATHS.some(p => pathname.startsWith(p))) {
+    // CORS preflight — no requiere API key
+    if (request.method === 'OPTIONS') {
+      return new NextResponse(null, {
+        status: 200,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Headers': 'x-publishable-api-key, Content-Type',
+          'Access-Control-Max-Age': '86400',
+        },
+      });
+    }
+
+    const apiKey = request.headers.get('x-publishable-api-key');
+    if (!apiKey || !STATS_API_KEY || apiKey !== STATS_API_KEY) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid API key' },
+        { status: 401 }
+      );
+    }
+
+    // API key válida — pasar con CORS headers
+    const response = NextResponse.next();
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    return response;
   }
 
   // Verificar cookie de sesión
