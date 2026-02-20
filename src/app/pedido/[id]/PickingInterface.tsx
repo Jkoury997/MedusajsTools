@@ -192,20 +192,25 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
   }, [orderId]);
 
   async function checkExistingSession() {
+    // No buscar sesión activa si la orden ya está fulfilled
+    if (['fulfilled', 'shipped', 'partially_shipped', 'delivered'].includes(fulfillmentStatus)) {
+      setCheckingSession(false);
+      return;
+    }
+
     try {
       const res = await fetch(`/api/picking/session/${orderId}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.session) {
-          setSession(data.session);
-          setElapsed(data.session.elapsedSeconds || 0);
-          setUserName(data.session.userName);
-          if (data.session.userId) setUserId(data.session.userId);
-          setStep('picking');
-        }
+      const data = await res.json();
+      if (data.success && data.session) {
+        setSession(data.session);
+        setElapsed(data.session.elapsedSeconds || 0);
+        setUserName(data.session.userName);
+        if (data.session.userId) setUserId(data.session.userId);
+        setStep('picking');
       }
+      // 404 = no hay sesión activa, es normal — no hacemos nada
     } catch {
-      // No active session
+      // Error de red
     } finally {
       setCheckingSession(false);
     }
