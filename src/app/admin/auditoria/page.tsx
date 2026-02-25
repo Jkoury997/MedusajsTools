@@ -15,7 +15,7 @@ interface AuditEntry {
   createdAt: string;
 }
 
-type ActionFilter = '' | 'session_start' | 'session_complete' | 'session_cancel' | 'item_pick' | 'item_unpick' | 'order_pack' | 'fulfillment_create' | 'fulfillment_error' | 'order_deliver' | 'user_create' | 'user_update' | 'user_delete' | 'admin_login' | 'store_login';
+type ActionFilter = '' | 'session_start' | 'session_complete' | 'session_cancel' | 'item_pick' | 'item_unpick' | 'item_missing' | 'order_pack' | 'fulfillment_create' | 'fulfillment_error' | 'order_deliver' | 'user_create' | 'user_update' | 'user_delete' | 'admin_login' | 'store_login';
 
 const ACTION_CONFIG: Record<string, { label: string; icon: string; color: string; bg: string }> = {
   session_start:     { label: 'Inicio picking',     icon: '▶',  color: 'text-blue-700',    bg: 'bg-blue-100' },
@@ -23,6 +23,7 @@ const ACTION_CONFIG: Record<string, { label: string; icon: string; color: string
   session_cancel:    { label: 'Picking cancelado',   icon: '✕',  color: 'text-red-700',     bg: 'bg-red-100' },
   item_pick:         { label: 'Item pickeado',       icon: '+',  color: 'text-emerald-700', bg: 'bg-emerald-50' },
   item_unpick:       { label: 'Item removido',       icon: '-',  color: 'text-orange-700',  bg: 'bg-orange-50' },
+  item_missing:      { label: 'Item faltante',       icon: '!',  color: 'text-red-700',     bg: 'bg-red-50' },
   order_pack:        { label: 'Empaquetado',         icon: '📦', color: 'text-purple-700',  bg: 'bg-purple-100' },
   fulfillment_create:{ label: 'Fulfillment creado',  icon: '🚚', color: 'text-cyan-700',    bg: 'bg-cyan-100' },
   fulfillment_error: { label: 'Error fulfillment',   icon: '⚠',  color: 'text-red-700',     bg: 'bg-red-50' },
@@ -37,7 +38,7 @@ const ACTION_CONFIG: Record<string, { label: string; icon: string; color: string
 const FILTER_GROUPS = [
   {
     label: 'Picking',
-    actions: ['session_start', 'session_complete', 'session_cancel', 'item_pick', 'item_unpick'],
+    actions: ['session_start', 'session_complete', 'session_cancel', 'item_pick', 'item_unpick', 'item_missing'],
   },
   {
     label: 'Envio',
@@ -221,6 +222,9 @@ export default function AuditoriaPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Link href="/admin/faltantes" className="text-sm text-red-600 font-medium hover:text-red-700">
+              Faltantes
+            </Link>
             <Link href="/admin/historial" className="text-sm text-purple-600 font-medium hover:text-purple-700">
               Metricas
             </Link>

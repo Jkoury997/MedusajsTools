@@ -247,6 +247,9 @@ export default function HistorialPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <Link href="/admin/faltantes" className="text-sm text-red-600 font-medium hover:text-red-700">
+              Faltantes
+            </Link>
             <Link href="/admin/auditoria" className="text-sm text-amber-600 font-medium hover:text-amber-700">
               Auditoria
             </Link>

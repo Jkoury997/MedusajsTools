@@ -71,6 +71,7 @@ interface PickingItem {
   barcode?: string;
   quantityRequired: number;
   quantityPicked: number;
+  quantityMissing?: number;
   scanMethod?: string;
 }
 
@@ -84,6 +85,7 @@ interface SessionData {
   items: PickingItem[];
   totalRequired: number;
   totalPicked: number;
+  totalMissing: number;
   isComplete: boolean;
   progressPercent: number;
   elapsedSeconds: number;
@@ -104,12 +106,21 @@ interface OrderItem {
   } | null;
 }
 
+interface MissingItemResult {
+  lineItemId: string;
+  sku?: string;
+  barcode?: string;
+  quantityMissing?: number;
+}
+
 interface CompletionResult {
   durationFormatted: string;
   userName: string;
   fulfillmentCreated: boolean;
   fulfillmentError?: string;
   packed?: boolean;
+  totalMissing?: number;
+  missingItems?: MissingItemResult[];
 }
 
 interface PickingInterfaceProps {
@@ -159,6 +170,8 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
   const [barcodeInput, setBarcodeInput] = useState('');
   const barcodeRef = useRef<HTMLInputElement>(null);
   const [lastScannedItemId, setLastScannedItemId] = useState<string | null>(null);
+  const [lastScannedName, setLastScannedName] = useState<string | null>(null);
+  const [manualMode, setManualMode] = useState(false);
 
   // Completion
   const [completing, setCompleting] = useState(false);
@@ -388,6 +401,36 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
     }
   }, [actionLoading, orderId]);
 
+  // Mark item as missing (faltante)
+  const handleMissing = useCallback(async (lineItemId: string, quantity: number) => {
+    if (actionLoading) return;
+    setActionLoading(`missing-${lineItemId}`);
+    setPickError('');
+
+    try {
+      const res = await fetch(`/api/picking/session/${orderId}/missing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lineItemId, quantity }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setSession(prev => prev ? { ...prev, ...data.session } : prev);
+        successFeedback();
+      } else {
+        setPickError(data.error);
+        errorFeedback();
+        setTimeout(() => setPickError(''), 3000);
+      }
+    } catch {
+      setPickError('Error de conexión');
+      errorFeedback();
+    } finally {
+      setActionLoading(null);
+    }
+  }, [actionLoading, orderId, successFeedback, errorFeedback]);
+
   // Barcode scan
   async function handleBarcodeScan(e: React.FormEvent) {
     e.preventDefault();
@@ -407,10 +450,18 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
         setSession(prev => prev ? { ...prev, ...data.session } : prev);
         setBarcodeInput('');
         successFeedback();
-        // Highlight the scanned item briefly
+        // Highlight the scanned item and show name
         if (data.pickedItem?.lineItemId) {
           setLastScannedItemId(data.pickedItem.lineItemId);
-          setTimeout(() => setLastScannedItemId(null), 1500);
+          const scannedOrderItem = orderItems.find(oi => oi.id === data.pickedItem.lineItemId);
+          if (scannedOrderItem) {
+            const name = getItemName(scannedOrderItem);
+            const size = scannedOrderItem.variant?.metadata?.size;
+            const color = scannedOrderItem.variant?.metadata?.color;
+            const detail = [size, color].filter(Boolean).join(' - ');
+            setLastScannedName(`${name}${detail ? ` (${detail})` : ''} — ${data.pickedItem.quantityPicked}/${data.pickedItem.quantityRequired}`);
+          }
+          setTimeout(() => { setLastScannedItemId(null); setLastScannedName(null); }, 2500);
         }
       } else {
         setPickError(data.error);
@@ -447,6 +498,8 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
           userName: data.userName,
           fulfillmentCreated: data.fulfillmentCreated,
           fulfillmentError: data.fulfillmentError,
+          totalMissing: data.totalMissing,
+          missingItems: data.missingItems,
         });
         setStep('completed');
       } else {
@@ -713,6 +766,23 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
               )}
             </div>
           )}
+
+          {/* Missing items summary */}
+          {completionResult.totalMissing && completionResult.totalMissing > 0 ? (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-3 text-left">
+              <p className="text-sm font-bold text-red-800 mb-1">
+                Productos faltantes: {completionResult.totalMissing}
+              </p>
+              {completionResult.missingItems?.map((mi) => {
+                const oi = orderItems.find(o => o.id === mi.lineItemId);
+                return (
+                  <p key={mi.lineItemId} className="text-xs text-red-700">
+                    - {oi ? getItemName(oi) : mi.sku || mi.barcode || mi.lineItemId} ({mi.quantityMissing} faltantes)
+                  </p>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
 
         {/* Botón Listo para Enviar */}
@@ -781,31 +851,63 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
           />
         </div>
         <div className="flex justify-between mt-1">
-          <span className="text-xs text-blue-100">{session?.totalPicked || 0} / {session?.totalRequired || 0} items</span>
+          <span className="text-xs text-blue-100">
+            {session?.totalPicked || 0} / {session?.totalRequired || 0} items
+            {(session?.totalMissing || 0) > 0 && (
+              <span className="text-red-200 ml-1">({session?.totalMissing} faltantes)</span>
+            )}
+          </span>
           <span className="text-xs text-blue-100">{session?.progressPercent || 0}%</span>
         </div>
       </div>
 
-      {/* Barcode Scanner */}
-      <form onSubmit={handleBarcodeScan} className="flex gap-2">
-        <input
-          ref={barcodeRef}
-          type="text"
-          value={barcodeInput}
-          onChange={(e) => setBarcodeInput(e.target.value)}
-          placeholder="Escanear código de barras..."
-          className="flex-1 px-3 py-2.5 border-2 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-        />
-        <button
-          type="submit"
-          disabled={!barcodeInput.trim() || !!actionLoading}
-          className="px-4 py-2.5 bg-gray-800 text-white rounded-xl text-sm font-medium disabled:opacity-50"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-          </svg>
-        </button>
-      </form>
+      {/* Barcode Scanner - Prominente */}
+      <div className="bg-gray-900 rounded-xl p-4">
+        <form onSubmit={handleBarcodeScan} className="flex gap-2">
+          <div className="relative flex-1">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+            </svg>
+            <input
+              ref={barcodeRef}
+              type="text"
+              value={barcodeInput}
+              onChange={(e) => setBarcodeInput(e.target.value)}
+              placeholder="Escanear código de barras..."
+              autoFocus
+              className="w-full pl-10 pr-3 py-3.5 bg-white border-2 border-gray-300 rounded-xl text-base font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={!barcodeInput.trim() || !!actionLoading}
+            className="px-5 py-3.5 bg-blue-500 text-white rounded-xl text-sm font-bold disabled:opacity-50 active:bg-blue-600"
+          >
+            OK
+          </button>
+        </form>
+
+        {/* Last scanned feedback */}
+        {lastScannedName && (
+          <div className="mt-2 bg-green-500/20 border border-green-500/30 rounded-lg px-3 py-2 flex items-center gap-2">
+            <svg className="w-4 h-4 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+            </svg>
+            <span className="text-green-300 text-sm truncate">{lastScannedName}</span>
+          </div>
+        )}
+
+        {/* Scanning indicator */}
+        {actionLoading === 'barcode' && (
+          <div className="mt-2 flex items-center justify-center gap-2 text-gray-400 text-sm">
+            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            Procesando...
+          </div>
+        )}
+      </div>
 
       {/* Error */}
       {pickError && (
@@ -817,118 +919,128 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
         </div>
       )}
 
-      {/* Items list */}
-      <div className="space-y-2">
+      {/* Items list - Solo progreso, sin botones */}
+      <div className="space-y-1.5">
         {session?.items.map((sessionItem) => {
           const orderItem = orderItems.find(oi => oi.id === sessionItem.lineItemId);
           if (!orderItem) return null;
 
-          const isDone = sessionItem.quantityPicked >= sessionItem.quantityRequired;
+          const isMissing = (sessionItem.quantityMissing || 0) > 0;
+          const isDone = sessionItem.quantityPicked + (sessionItem.quantityMissing || 0) >= sessionItem.quantityRequired;
           const isJustScanned = lastScannedItemId === sessionItem.lineItemId;
           const itemName = getItemName(orderItem);
           const itemCode = getItemCode(orderItem);
-          const itemBarcode = sessionItem.barcode || orderItem.variant?.barcode;
           const color = orderItem.variant?.metadata?.color;
           const size = orderItem.variant?.metadata?.size;
           const thumbnail = orderItem.variant?.product?.thumbnail;
+          const remaining = sessionItem.quantityRequired - sessionItem.quantityPicked;
 
           return (
             <div
               key={sessionItem.lineItemId}
-              className={`bg-white rounded-xl border-2 overflow-hidden transition-all duration-300 ${
+              className={`rounded-xl border-2 overflow-hidden transition-all duration-300 ${
                 isJustScanned
                   ? 'border-yellow-400 bg-yellow-50 ring-2 ring-yellow-300'
-                  : isDone
-                    ? 'border-green-300 bg-green-50'
-                    : 'border-gray-200'
+                  : isMissing && isDone
+                    ? 'border-red-300 bg-red-50'
+                    : isDone
+                      ? 'border-green-300 bg-green-50'
+                      : 'bg-white border-gray-200'
               }`}
             >
-              <div className="p-3">
-                <div className="flex gap-3">
-                  {/* Thumbnail */}
-                  {thumbnail && (
-                    <img
-                      src={thumbnail}
-                      alt={itemName}
-                      className={`w-14 h-14 object-cover rounded-lg border flex-shrink-0 ${isDone ? 'opacity-50' : ''}`}
-                    />
-                  )}
+              <div className="p-2.5 flex items-center gap-3">
+                {/* Thumbnail */}
+                {thumbnail && (
+                  <img
+                    src={thumbnail}
+                    alt={itemName}
+                    className={`w-11 h-11 object-cover rounded-lg border flex-shrink-0 ${isDone ? 'opacity-50' : ''}`}
+                  />
+                )}
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className={`text-sm font-medium line-clamp-1 ${isDone ? 'text-green-700' : 'text-gray-900'}`}>
-                          {itemName}
-                        </p>
-                        <p className="text-xs text-gray-500 font-mono">{itemCode}</p>
-                        {/* Barcode display */}
-                        {itemBarcode ? (
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                            </svg>
-                            <span className="text-xs text-gray-400 font-mono">{itemBarcode}</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <span className="text-xs text-orange-400 italic">Sin código de barras</span>
-                          </div>
-                        )}
-                        <div className="flex gap-1 mt-1">
-                          {size && (
-                            <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
-                              {size}
-                            </span>
-                          )}
-                          {color && (
-                            <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded">
-                              {color}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Counter + buttons */}
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <button
-                          onClick={() => handleUnpick(sessionItem.lineItemId)}
-                          disabled={sessionItem.quantityPicked <= 0 || !!actionLoading}
-                          className="w-9 h-9 bg-red-100 text-red-600 rounded-lg flex items-center justify-center text-lg font-bold disabled:opacity-30 active:bg-red-200"
-                        >
-                          -
-                        </button>
-
-                        <div className={`w-14 h-9 rounded-lg flex items-center justify-center text-sm font-bold ${
-                          isDone ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-900'
-                        }`}>
-                          {sessionItem.quantityPicked}/{sessionItem.quantityRequired}
-                        </div>
-
-                        <button
-                          onClick={() => handlePick(sessionItem.lineItemId)}
-                          disabled={isDone || !!actionLoading}
-                          className="w-9 h-9 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center text-lg font-bold disabled:opacity-30 active:bg-blue-200"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-medium line-clamp-1 ${
+                    isMissing && isDone ? 'text-red-700' : isDone ? 'text-green-700' : 'text-gray-900'
+                  }`}>
+                    {itemName}
+                  </p>
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    <span className="text-xs text-gray-500 font-mono">{itemCode}</span>
+                    {size && <span className="text-xs px-1 py-0.5 bg-blue-100 text-blue-700 rounded">{size}</span>}
+                    {color && <span className="text-xs px-1 py-0.5 bg-gray-100 text-gray-700 rounded">{color}</span>}
+                    {isMissing && (
+                      <span className="text-xs px-1.5 py-0.5 bg-red-100 text-red-700 rounded font-bold">
+                        {sessionItem.quantityMissing} faltante{(sessionItem.quantityMissing || 0) > 1 ? 's' : ''}
+                      </span>
+                    )}
                   </div>
                 </div>
-              </div>
 
-              {/* Done indicator */}
-              {isDone && (
-                <div className="bg-green-500 text-white text-center py-1 text-xs font-bold flex items-center justify-center gap-1">
-                  {sessionItem.scanMethod === 'barcode' && (
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                    </svg>
+                {/* Counter + Faltante */}
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {/* Manual buttons */}
+                  {manualMode && (
+                    <button
+                      onClick={() => handleUnpick(sessionItem.lineItemId)}
+                      disabled={sessionItem.quantityPicked <= 0 || !!actionLoading}
+                      className="w-8 h-8 bg-red-100 text-red-600 rounded-lg flex items-center justify-center text-sm font-bold disabled:opacity-30 active:bg-red-200"
+                    >
+                      -
+                    </button>
                   )}
-                  COMPLETO
+
+                  <div className={`px-2.5 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${
+                    isMissing && isDone ? 'bg-red-500 text-white' : isDone ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-900'
+                  }`}>
+                    {isDone && !isMissing ? (
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      `${sessionItem.quantityPicked}/${sessionItem.quantityRequired}`
+                    )}
+                  </div>
+
+                  {manualMode && (
+                    <button
+                      onClick={() => handlePick(sessionItem.lineItemId)}
+                      disabled={sessionItem.quantityPicked >= sessionItem.quantityRequired || !!actionLoading}
+                      className="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center text-sm font-bold disabled:opacity-30 active:bg-blue-200"
+                    >
+                      +
+                    </button>
+                  )}
+
+                  {/* Faltante button */}
+                  {!isDone && remaining > 0 && (
+                    <button
+                      onClick={() => handleMissing(sessionItem.lineItemId, remaining)}
+                      disabled={!!actionLoading}
+                      className="w-8 h-8 bg-red-100 text-red-600 rounded-lg flex items-center justify-center disabled:opacity-30 active:bg-red-200"
+                      title="Marcar como faltante"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                      </svg>
+                    </button>
+                  )}
+
+                  {/* Undo faltante */}
+                  {isMissing && (
+                    <button
+                      onClick={() => handleMissing(sessionItem.lineItemId, 0)}
+                      disabled={!!actionLoading}
+                      className="w-8 h-8 bg-yellow-100 text-yellow-700 rounded-lg flex items-center justify-center disabled:opacity-30 active:bg-yellow-200"
+                      title="Deshacer faltante"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           );
         })}
@@ -964,20 +1076,28 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
           ) : (
             <>
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
               </svg>
-              Faltan items por pickear
+              Escaneá los productos
             </>
           )}
         </button>
 
-        {/* Cancel */}
-        <button
-          onClick={handleCancelClick}
-          className="w-full py-2 text-sm text-red-500 hover:text-red-700 font-medium"
-        >
-          Cancelar picking
-        </button>
+        {/* Modo manual toggle + Cancel */}
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => { setManualMode(m => !m); }}
+            className="text-xs text-gray-400 hover:text-gray-600 font-medium"
+          >
+            {manualMode ? 'Ocultar modo manual' : 'Modo manual'}
+          </button>
+          <button
+            onClick={handleCancelClick}
+            className="text-xs text-red-400 hover:text-red-600 font-medium"
+          >
+            Cancelar picking
+          </button>
+        </div>
       </div>
 
       {/* Modal de cancelación con razón obligatoria */}

@@ -43,13 +43,14 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Verificar que todo esté pickeado
-    const allPicked = session.items.every(i => i.quantityPicked >= i.quantityRequired);
-    if (!allPicked) {
+    // Verificar que todo esté pickeado o marcado como faltante
+    const allAccounted = session.items.every(i => i.quantityPicked + (i.quantityMissing || 0) >= i.quantityRequired);
+    if (!allAccounted) {
       const totalRequired = session.items.reduce((sum, i) => sum + i.quantityRequired, 0);
       const totalPicked = session.items.reduce((sum, i) => sum + i.quantityPicked, 0);
+      const totalMissing = session.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
       return NextResponse.json(
-        { success: false, error: `Faltan items (${totalPicked}/${totalRequired})` },
+        { success: false, error: `Faltan items (${totalPicked} pickeados + ${totalMissing} faltantes de ${totalRequired})` },
         { status: 400 }
       );
     }
@@ -64,14 +65,19 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     session.completedByName = user.name;
     await session.save();
 
+    const totalMissing = session.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
+    const missingItems = session.items
+      .filter(i => (i.quantityMissing || 0) > 0)
+      .map(i => ({ lineItemId: i.lineItemId, sku: i.sku, barcode: i.barcode, quantityMissing: i.quantityMissing }));
+
     audit({
       action: 'session_complete',
       userName: user.name,
       userId: user._id.toString(),
       orderId,
       orderDisplayId: session.orderDisplayId,
-      details: `Picking completado en ${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s (${session.totalPicked} items)`,
-      metadata: { durationSeconds, totalPicked: session.totalPicked, totalRequired: session.totalRequired },
+      details: `Picking completado en ${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s (${session.totalPicked} items${totalMissing > 0 ? `, ${totalMissing} faltantes` : ''})`,
+      metadata: { durationSeconds, totalPicked: session.totalPicked, totalRequired: session.totalRequired, totalMissing, missingItems },
     });
 
     // PASO 2: Crear fulfillment en Medusa
@@ -86,15 +92,21 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
       const order = orderData.order;
 
-      // Crear fulfillment en Medusa
+      // Crear fulfillment en Medusa - solo items pickeados (con cantidad real pickeada)
+      // Si hay faltantes, enviar solo la cantidad que se pickeó
+      const fulfillmentItems = order.items
+        .map((item: any) => {
+          const sessionItem = session.items.find(si => si.lineItemId === item.id);
+          const pickedQty = sessionItem ? sessionItem.quantityPicked : item.quantity;
+          return { id: item.id, quantity: pickedQty };
+        })
+        .filter((item: any) => item.quantity > 0);
+
       // MedusaJS v2 endpoint: POST /admin/orders/:id/fulfillments (plural)
       await medusaRequest(`/admin/orders/${orderId}/fulfillments`, {
         method: 'POST',
         body: {
-          items: order.items.map((item: any) => ({
-            id: item.id,
-            quantity: item.quantity,
-          })),
+          items: fulfillmentItems,
         },
       });
 
@@ -140,6 +152,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       userName: user.name,
       fulfillmentCreated,
       fulfillmentError: fulfillmentError || undefined,
+      totalMissing,
+      missingItems,
     });
   } catch (error) {
     console.error('Error completing picking:', error);

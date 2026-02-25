@@ -72,8 +72,16 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
     const totalRequired = session.items.reduce((sum, i) => sum + i.quantityRequired, 0);
     const totalPicked = session.totalPicked;
-    const isComplete = session.items.every(i => i.quantityPicked >= i.quantityRequired);
+    const totalMissing = session.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
+    const isComplete = session.items.every(i => i.quantityPicked + (i.quantityMissing || 0) >= i.quantityRequired);
     const elapsed = Math.round((Date.now() - session.startedAt.getTime()) / 1000);
+
+    // Si se pickea un item que tenía faltantes, resetear faltante
+    if (item.quantityMissing && item.quantityPicked + (item.quantityMissing || 0) > item.quantityRequired) {
+      item.quantityMissing = Math.max(0, item.quantityRequired - item.quantityPicked);
+      session.totalMissing = session.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
+      await session.save();
+    }
 
     audit({
       action: 'item_pick',
@@ -97,8 +105,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         items: session.items,
         totalRequired,
         totalPicked,
+        totalMissing,
         isComplete,
-        progressPercent: totalRequired > 0 ? Math.round((totalPicked / totalRequired) * 100) : 0,
+        progressPercent: totalRequired > 0 ? Math.round(((totalPicked + totalMissing) / totalRequired) * 100) : 0,
         elapsedSeconds: elapsed,
       },
     });
