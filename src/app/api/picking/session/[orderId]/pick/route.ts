@@ -34,13 +34,21 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     }
 
     if (!item) {
+      if (method === 'barcode') {
+        // Build a helpful error message showing which barcodes exist
+        const availableBarcodes = session.items
+          .filter(i => i.barcode && i.quantityPicked < i.quantityRequired)
+          .map(i => i.barcode);
+        const errorMsg = availableBarcodes.length > 0
+          ? `Código "${barcode}" no encontrado. Códigos válidos: ${availableBarcodes.join(', ')}`
+          : 'Código de barras no encontrado en este pedido';
+        return NextResponse.json(
+          { success: false, error: errorMsg },
+          { status: 400 }
+        );
+      }
       return NextResponse.json(
-        {
-          success: false,
-          error: method === 'barcode'
-            ? 'Código de barras no encontrado en este pedido'
-            : 'Item no encontrado',
-        },
+        { success: false, error: 'Item no encontrado' },
         { status: 400 }
       );
     }
@@ -73,8 +81,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       userId: session.userId?.toString(),
       orderId,
       orderDisplayId: session.orderDisplayId,
-      details: `Pick item ${item.sku || item.lineItemId} (${item.quantityPicked}/${item.quantityRequired}) via ${method || 'manual'}`,
-      metadata: { lineItemId: item.lineItemId, sku: item.sku, method: method || 'manual', qty: item.quantityPicked },
+      details: `Pick item ${item.barcode || item.sku || item.lineItemId} (${item.quantityPicked}/${item.quantityRequired}) via ${method || 'manual'}`,
+      metadata: { lineItemId: item.lineItemId, sku: item.sku, barcode: item.barcode, method: method || 'manual', qty: item.quantityPicked },
     });
 
     return NextResponse.json({

@@ -158,6 +158,7 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
   // Barcode
   const [barcodeInput, setBarcodeInput] = useState('');
   const barcodeRef = useRef<HTMLInputElement>(null);
+  const [lastScannedItemId, setLastScannedItemId] = useState<string | null>(null);
 
   // Completion
   const [completing, setCompleting] = useState(false);
@@ -184,6 +185,13 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
     }, 1000);
     return () => clearInterval(interval);
   }, [step, session]);
+
+  // Auto-focus barcode input when entering picking mode
+  useEffect(() => {
+    if (step === 'picking') {
+      setTimeout(() => barcodeRef.current?.focus(), 300);
+    }
+  }, [step]);
 
   // Check for existing session on mount
   useEffect(() => {
@@ -399,6 +407,11 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
         setSession(prev => prev ? { ...prev, ...data.session } : prev);
         setBarcodeInput('');
         successFeedback();
+        // Highlight the scanned item briefly
+        if (data.pickedItem?.lineItemId) {
+          setLastScannedItemId(data.pickedItem.lineItemId);
+          setTimeout(() => setLastScannedItemId(null), 1500);
+        }
       } else {
         setPickError(data.error);
         errorFeedback();
@@ -811,8 +824,10 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
           if (!orderItem) return null;
 
           const isDone = sessionItem.quantityPicked >= sessionItem.quantityRequired;
+          const isJustScanned = lastScannedItemId === sessionItem.lineItemId;
           const itemName = getItemName(orderItem);
           const itemCode = getItemCode(orderItem);
+          const itemBarcode = sessionItem.barcode || orderItem.variant?.barcode;
           const color = orderItem.variant?.metadata?.color;
           const size = orderItem.variant?.metadata?.size;
           const thumbnail = orderItem.variant?.product?.thumbnail;
@@ -820,8 +835,12 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
           return (
             <div
               key={sessionItem.lineItemId}
-              className={`bg-white rounded-xl border-2 overflow-hidden transition-colors ${
-                isDone ? 'border-green-300 bg-green-50' : 'border-gray-200'
+              className={`bg-white rounded-xl border-2 overflow-hidden transition-all duration-300 ${
+                isJustScanned
+                  ? 'border-yellow-400 bg-yellow-50 ring-2 ring-yellow-300'
+                  : isDone
+                    ? 'border-green-300 bg-green-50'
+                    : 'border-gray-200'
               }`}
             >
               <div className="p-3">
@@ -843,6 +862,19 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
                           {itemName}
                         </p>
                         <p className="text-xs text-gray-500 font-mono">{itemCode}</p>
+                        {/* Barcode display */}
+                        {itemBarcode ? (
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                            </svg>
+                            <span className="text-xs text-gray-400 font-mono">{itemBarcode}</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className="text-xs text-orange-400 italic">Sin código de barras</span>
+                          </div>
+                        )}
                         <div className="flex gap-1 mt-1">
                           {size && (
                             <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
@@ -888,7 +920,12 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
 
               {/* Done indicator */}
               {isDone && (
-                <div className="bg-green-500 text-white text-center py-1 text-xs font-bold">
+                <div className="bg-green-500 text-white text-center py-1 text-xs font-bold flex items-center justify-center gap-1">
+                  {sessionItem.scanMethod === 'barcode' && (
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                    </svg>
+                  )}
                   COMPLETO
                 </div>
               )}
