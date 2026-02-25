@@ -35,6 +35,7 @@ export interface IPickingItem {
   barcode?: string;
   quantityRequired: number;
   quantityPicked: number;
+  quantityMissing?: number;
   pickedAt?: Date;
   scanMethod?: 'barcode' | 'manual' | 'sku';
 }
@@ -62,6 +63,7 @@ export interface IPickingSession extends Document {
   // Totales
   totalRequired: number;
   totalPicked: number;
+  totalMissing: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -74,6 +76,7 @@ const PickingItemSchema = new Schema<IPickingItem>(
     barcode: { type: String },
     quantityRequired: { type: Number, required: true },
     quantityPicked: { type: Number, default: 0 },
+    quantityMissing: { type: Number, default: 0 },
     pickedAt: { type: Date },
     scanMethod: { type: String, enum: ['barcode', 'manual', 'sku'] },
   },
@@ -109,6 +112,7 @@ const PickingSessionSchema = new Schema<IPickingSession>(
     // Totales
     totalRequired: { type: Number, default: 0 },
     totalPicked: { type: Number, default: 0 },
+    totalMissing: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
@@ -170,6 +174,7 @@ export type AuditAction =
   | 'session_cancel'
   | 'item_pick'
   | 'item_unpick'
+  | 'item_missing'
   | 'order_pack'
   | 'fulfillment_create'
   | 'fulfillment_error'

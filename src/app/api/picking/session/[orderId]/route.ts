@@ -26,7 +26,8 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 
     const totalRequired = session.items.reduce((sum, i) => sum + i.quantityRequired, 0);
     const totalPicked = session.items.reduce((sum, i) => sum + i.quantityPicked, 0);
-    const isComplete = session.items.every(i => i.quantityPicked >= i.quantityRequired);
+    const totalMissing = session.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
+    const isComplete = session.items.every(i => i.quantityPicked + (i.quantityMissing || 0) >= i.quantityRequired);
     const elapsed = Math.round((Date.now() - session.startedAt.getTime()) / 1000);
 
     return NextResponse.json({
@@ -42,8 +43,9 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
         items: session.items,
         totalRequired,
         totalPicked,
+        totalMissing,
         isComplete,
-        progressPercent: totalRequired > 0 ? Math.round((totalPicked / totalRequired) * 100) : 0,
+        progressPercent: totalRequired > 0 ? Math.round(((totalPicked + totalMissing) / totalRequired) * 100) : 0,
         elapsedSeconds: elapsed,
       },
     });
@@ -88,7 +90,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       // Retornar la sesión existente
       const totalRequired = existing.items.reduce((sum, i) => sum + i.quantityRequired, 0);
       const totalPicked = existing.items.reduce((sum, i) => sum + i.quantityPicked, 0);
-      const isComplete = existing.items.every(i => i.quantityPicked >= i.quantityRequired);
+      const totalMissing = existing.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
+      const isComplete = existing.items.every(i => i.quantityPicked + (i.quantityMissing || 0) >= i.quantityRequired);
       const elapsed = Math.round((Date.now() - existing.startedAt.getTime()) / 1000);
 
       return NextResponse.json({
@@ -103,8 +106,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
           items: existing.items,
           totalRequired,
           totalPicked,
+          totalMissing,
           isComplete,
-          progressPercent: totalRequired > 0 ? Math.round((totalPicked / totalRequired) * 100) : 0,
+          progressPercent: totalRequired > 0 ? Math.round(((totalPicked + totalMissing) / totalRequired) * 100) : 0,
           elapsedSeconds: elapsed,
         },
       });

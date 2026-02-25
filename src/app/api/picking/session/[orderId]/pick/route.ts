@@ -34,13 +34,21 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     }
 
     if (!item) {
+      if (method === 'barcode') {
+        // Build a helpful error message showing which barcodes exist
+        const availableBarcodes = session.items
+          .filter(i => i.barcode && i.quantityPicked < i.quantityRequired)
+          .map(i => i.barcode);
+        const errorMsg = availableBarcodes.length > 0
+          ? `Código "${barcode}" no encontrado. Códigos válidos: ${availableBarcodes.join(', ')}`
+          : 'Código de barras no encontrado en este pedido';
+        return NextResponse.json(
+          { success: false, error: errorMsg },
+          { status: 400 }
+        );
+      }
       return NextResponse.json(
-        {
-          success: false,
-          error: method === 'barcode'
-            ? 'Código de barras no encontrado en este pedido'
-            : 'Item no encontrado',
-        },
+        { success: false, error: 'Item no encontrado' },
         { status: 400 }
       );
     }
@@ -64,8 +72,16 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
     const totalRequired = session.items.reduce((sum, i) => sum + i.quantityRequired, 0);
     const totalPicked = session.totalPicked;
-    const isComplete = session.items.every(i => i.quantityPicked >= i.quantityRequired);
+    const totalMissing = session.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
+    const isComplete = session.items.every(i => i.quantityPicked + (i.quantityMissing || 0) >= i.quantityRequired);
     const elapsed = Math.round((Date.now() - session.startedAt.getTime()) / 1000);
+
+    // Si se pickea un item que tenía faltantes, resetear faltante
+    if (item.quantityMissing && item.quantityPicked + (item.quantityMissing || 0) > item.quantityRequired) {
+      item.quantityMissing = Math.max(0, item.quantityRequired - item.quantityPicked);
+      session.totalMissing = session.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
+      await session.save();
+    }
 
     audit({
       action: 'item_pick',
@@ -73,8 +89,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       userId: session.userId?.toString(),
       orderId,
       orderDisplayId: session.orderDisplayId,
-      details: `Pick item ${item.sku || item.lineItemId} (${item.quantityPicked}/${item.quantityRequired}) via ${method || 'manual'}`,
-      metadata: { lineItemId: item.lineItemId, sku: item.sku, method: method || 'manual', qty: item.quantityPicked },
+      details: `Pick item ${item.barcode || item.sku || item.lineItemId} (${item.quantityPicked}/${item.quantityRequired}) via ${method || 'manual'}`,
+      metadata: { lineItemId: item.lineItemId, sku: item.sku, barcode: item.barcode, method: method || 'manual', qty: item.quantityPicked },
     });
 
     return NextResponse.json({
@@ -89,8 +105,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         items: session.items,
         totalRequired,
         totalPicked,
+        totalMissing,
         isComplete,
-        progressPercent: totalRequired > 0 ? Math.round((totalPicked / totalRequired) * 100) : 0,
+        progressPercent: totalRequired > 0 ? Math.round(((totalPicked + totalMissing) / totalRequired) * 100) : 0,
         elapsedSeconds: elapsed,
       },
     });

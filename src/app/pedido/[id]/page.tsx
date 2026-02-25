@@ -135,6 +135,11 @@ function getItemCode(item: LineItem): string {
   return '-';
 }
 
+// Obtiene el barcode de la variante
+function getItemBarcode(item: LineItem): string | null {
+  return item.variant?.barcode || item.variant_barcode || null;
+}
+
 // Obtiene el nombre del producto
 function getProductName(item: LineItem): string {
   return item.variant?.product?.title || item.product_title || item.title || 'Producto';
@@ -153,6 +158,7 @@ function getItemSize(item: LineItem): string | null {
 // Componente de item compacto para IMPRESIÓN - SIN imagen
 function ItemRowPrint({ item, index }: { item: LineItem; index: number }) {
   const code = getItemCode(item);
+  const barcode = getItemBarcode(item);
   const productName = getProductName(item);
   const color = getItemColor(item);
   const size = getItemSize(item);
@@ -161,6 +167,7 @@ function ItemRowPrint({ item, index }: { item: LineItem; index: number }) {
     <tr className="border-b border-gray-300">
       <td className="py-1 px-2 text-xs">{productName}</td>
       <td className="py-1 px-2 font-mono font-bold text-xs">{code}</td>
+      <td className="py-1 px-2 font-mono text-xs text-center">{barcode || '-'}</td>
       <td className="py-1 px-2 text-xs text-center">{size || '-'}</td>
       <td className="py-1 px-2 text-xs text-center">{color || '-'}</td>
       <td className="py-1 px-2 text-center font-bold">{item.quantity}</td>
@@ -418,6 +425,7 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
               <tr className="bg-gray-100">
                 <th className="py-1 px-2 border border-gray-400">Nombre</th>
                 <th className="py-1 px-2 border border-gray-400 w-20">Código</th>
+                <th className="py-1 px-2 border border-gray-400 w-24">Barcode</th>
                 <th className="py-1 px-2 border border-gray-400 w-12">Talle</th>
                 <th className="py-1 px-2 border border-gray-400 w-16">Color</th>
                 <th className="py-1 px-2 border border-gray-400 w-10">Cant</th>
@@ -440,6 +448,7 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
             {sortedItems.map((item) => {
               const productName = getProductName(item);
               const code = getItemCode(item);
+              const barcode = getItemBarcode(item);
               const color = getItemColor(item);
               const size = getItemSize(item);
               const thumbnail = item.variant?.product?.thumbnail;
@@ -457,6 +466,14 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900 line-clamp-1">{productName}</p>
                       <p className="text-xs text-gray-500 font-mono">{code}</p>
+                      {barcode && (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                          </svg>
+                          <span className="text-xs text-gray-400 font-mono">{barcode}</span>
+                        </div>
+                      )}
                       <div className="flex items-center gap-2 mt-1">
                         {size && (
                           <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">{size}</span>
