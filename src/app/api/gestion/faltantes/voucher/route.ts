@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
 import { PickingSession, audit } from '@/lib/mongodb/models';
-import { medusaRequest } from '@/lib/medusa';
+
+const MEDUSA_BACKEND_URL = process.env.MEDUSA_BACKEND_URL || 'https://backend.marcelakoury.com';
+const STATS_API_KEY = process.env.STATS_API_KEY || '';
 
 // POST /api/gestion/faltantes/voucher - Crear gift card en Medusa y resolver faltante
 export async function POST(req: NextRequest) {
@@ -16,6 +18,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (!STATS_API_KEY) {
+      return NextResponse.json(
+        { success: false, error: 'STATS_API_KEY no configurada' },
+        { status: 500 }
+      );
+    }
+
     // Obtener sesión
     const session = await PickingSession.findOne({ orderId, status: 'completed' });
     if (!session) {
@@ -26,10 +35,25 @@ export async function POST(req: NextRequest) {
     }
 
     // Obtener datos del pedido para region_id
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const orderData = await medusaRequest<{ order: any }>(
-      `/admin/orders/${orderId}?fields=+shipping_address.*,+customer.*`
-    );
+    const orderUrl = `${MEDUSA_BACKEND_URL}/admin/orders/${orderId}?fields=+shipping_address.*,+customer.*`;
+    console.log('[Voucher] Fetching order from:', orderUrl);
+
+    const orderRes = await fetch(orderUrl, {
+      headers: {
+        'Authorization': `Basic ${STATS_API_KEY}`,
+      },
+    });
+
+    if (!orderRes.ok) {
+      const errText = await orderRes.text();
+      console.error(`[Voucher] Error fetching order: status=${orderRes.status} body=${errText}`);
+      return NextResponse.json(
+        { success: false, error: `No se pudo obtener datos del pedido (${orderRes.status})` },
+        { status: 500 }
+      );
+    }
+
+    const orderData = await orderRes.json();
     const order = orderData.order;
     const regionId = order.region_id;
 
@@ -41,10 +65,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Crear gift card en Medusa
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const giftCardData = await medusaRequest<{ gift_card: any }>('/admin/gift-cards', {
+    const giftCardRes = await fetch(`${MEDUSA_BACKEND_URL}/admin/gift-cards`, {
       method: 'POST',
-      body: {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${STATS_API_KEY}`,
+      },
+      body: JSON.stringify({
         value: Math.round(value),
         region_id: regionId,
         is_disabled: false,
@@ -54,9 +81,19 @@ export async function POST(req: NextRequest) {
           reason: 'faltante_compensation',
           notes: notes || '',
         },
-      },
+      }),
     });
 
+    if (!giftCardRes.ok) {
+      const errText = await giftCardRes.text();
+      console.error('[Voucher] Error creating gift card:', errText);
+      return NextResponse.json(
+        { success: false, error: `Error al crear gift card: ${errText}` },
+        { status: 500 }
+      );
+    }
+
+    const giftCardData = await giftCardRes.json();
     const giftCard = giftCardData.gift_card;
 
     // Actualizar sesión con resolución voucher
