@@ -3,32 +3,44 @@ import { connectDB } from '@/lib/mongodb/connection';
 import { PickingSession, AuditLog } from '@/lib/mongodb/models';
 import { getAllPaidOrders } from '@/lib/medusa';
 
-// GET /api/gestion?tab=preparados|faltantes|por-enviar|enviados
+// GET /api/gestion?tab=por-preparar|preparados|faltantes|por-enviar|enviados
 export async function GET(req: NextRequest) {
   try {
-    const tab = req.nextUrl.searchParams.get('tab') || 'preparados';
+    const tab = req.nextUrl.searchParams.get('tab') || 'por-preparar';
 
     await connectDB();
 
     // Obtener todos los pedidos pagados de Medusa
     const allOrders = await getAllPaidOrders();
 
-    // Obtener todas las sesiones completadas
-    const completedSessions = await PickingSession.find({ status: 'completed' })
-      .select('orderId orderDisplayId totalRequired totalPicked totalMissing packed packedAt userName completedAt durationSeconds faltanteResolution faltanteResolvedAt faltanteNotes items')
+    // Obtener todas las sesiones (completadas + en progreso)
+    const allSessions = await PickingSession.find({ status: { $in: ['completed', 'in_progress'] } })
+      .select('orderId orderDisplayId status totalRequired totalPicked totalMissing packed packedAt userName completedAt durationSeconds faltanteResolution faltanteResolvedAt faltanteNotes items startedAt')
       .lean();
 
-    const sessionMap = new Map<string, any>();
-    for (const s of completedSessions) {
-      sessionMap.set(s.orderId, s);
+    const completedSessionMap = new Map<string, any>();
+    const inProgressSessionMap = new Map<string, any>();
+    for (const s of allSessions) {
+      if (s.status === 'completed') {
+        completedSessionMap.set(s.orderId, s);
+      } else if (s.status === 'in_progress') {
+        inProgressSessionMap.set(s.orderId, s);
+      }
     }
 
     // Clasificar pedidos
     const results: any[] = [];
 
     for (const order of allOrders) {
-      const session = sessionMap.get(order.id);
+      const completedSession = completedSessionMap.get(order.id);
+      const inProgressSession = inProgressSessionMap.get(order.id);
       const fulfillmentStatus = order.fulfillment_status || 'not_fulfilled';
+
+      // Determinar si el envío es express
+      const shippingName = order.shipping_methods?.[0]?.name || '';
+      const isExpress = shippingName.toLowerCase().includes('express') ||
+        shippingName.toLowerCase().includes('rápido') ||
+        shippingName.toLowerCase().includes('rapido');
 
       const orderData: Record<string, any> = {
         id: order.id,
@@ -46,21 +58,22 @@ export async function GET(req: NextRequest) {
           : null,
         province: order.shipping_address?.province || null,
         fulfillmentStatus,
-        shippingMethod: order.shipping_methods?.[0]?.name || null,
+        shippingMethod: shippingName || null,
+        isExpress,
         itemCount: (order.items || []).reduce((sum: number, item: any) => sum + (item.quantity || 0), 0),
-        session: session ? {
-          totalRequired: session.totalRequired,
-          totalPicked: session.totalPicked,
-          totalMissing: session.totalMissing,
-          packed: session.packed,
-          packedAt: session.packedAt,
-          userName: session.userName,
-          completedAt: session.completedAt,
-          durationSeconds: session.durationSeconds,
-          faltanteResolution: session.faltanteResolution,
-          faltanteResolvedAt: session.faltanteResolvedAt,
-          faltanteNotes: session.faltanteNotes,
-          missingItems: session.items
+        session: completedSession ? {
+          totalRequired: completedSession.totalRequired,
+          totalPicked: completedSession.totalPicked,
+          totalMissing: completedSession.totalMissing,
+          packed: completedSession.packed,
+          packedAt: completedSession.packedAt,
+          userName: completedSession.userName,
+          completedAt: completedSession.completedAt,
+          durationSeconds: completedSession.durationSeconds,
+          faltanteResolution: completedSession.faltanteResolution,
+          faltanteResolvedAt: completedSession.faltanteResolvedAt,
+          faltanteNotes: completedSession.faltanteNotes,
+          missingItems: completedSession.items
             ?.filter((i: any) => (i.quantityMissing || 0) > 0)
             .map((i: any) => ({
               lineItemId: i.lineItemId,
@@ -71,27 +84,44 @@ export async function GET(req: NextRequest) {
               quantityMissing: i.quantityMissing,
             })) || [],
         } : null,
+        // Info de sesión en progreso (para tab por-preparar)
+        inProgressSession: inProgressSession ? {
+          userName: inProgressSession.userName,
+          totalRequired: inProgressSession.totalRequired,
+          totalPicked: inProgressSession.totalPicked,
+          progressPercent: inProgressSession.totalRequired > 0
+            ? Math.round((inProgressSession.totalPicked / inProgressSession.totalRequired) * 100)
+            : 0,
+          startedAt: inProgressSession.startedAt,
+        } : null,
       };
 
       switch (tab) {
+        case 'por-preparar':
+          // Pedidos no preparados: not_fulfilled o partially_fulfilled, sin sesión completada
+          if (['not_fulfilled', 'partially_fulfilled'].includes(fulfillmentStatus) && !completedSession) {
+            results.push(orderData);
+          }
+          break;
+
         case 'preparados':
           // Pedidos que están fulfilled (preparados) - incluye con y sin faltantes
-          if (fulfillmentStatus === 'fulfilled' && session) {
+          if (fulfillmentStatus === 'fulfilled' && completedSession) {
             results.push(orderData);
           }
           break;
 
         case 'faltantes':
           // Pedidos con faltantes pendientes de resolución
-          if (session && session.totalMissing > 0 && session.faltanteResolution === 'pending') {
+          if (completedSession && completedSession.totalMissing > 0 && completedSession.faltanteResolution === 'pending') {
             results.push(orderData);
           }
           break;
 
         case 'por-enviar':
           // Pedidos fulfilled, sin faltantes pendientes, listos para enviar
-          if (fulfillmentStatus === 'fulfilled' && session) {
-            const hasPendingFaltantes = session.totalMissing > 0 && session.faltanteResolution === 'pending';
+          if (fulfillmentStatus === 'fulfilled' && completedSession) {
+            const hasPendingFaltantes = completedSession.totalMissing > 0 && completedSession.faltanteResolution === 'pending';
             if (!hasPendingFaltantes) {
               results.push(orderData);
             }
@@ -113,18 +143,25 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Ordenar por fecha de creación (más viejo primero)
-    results.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    // Ordenar: express primero, luego por fecha (más viejo primero)
+    results.sort((a, b) => {
+      if (a.isExpress && !b.isExpress) return -1;
+      if (!a.isExpress && b.isExpress) return 1;
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
 
     // Contar para badges
-    const counts = { preparados: 0, faltantes: 0, 'por-enviar': 0, enviados: 0 };
+    const counts: Record<string, number> = { 'por-preparar': 0, preparados: 0, faltantes: 0, 'por-enviar': 0, enviados: 0 };
     for (const order of allOrders) {
-      const session = sessionMap.get(order.id);
+      const completedSession = completedSessionMap.get(order.id);
       const fs = order.fulfillment_status || 'not_fulfilled';
 
-      if (fs === 'fulfilled' && session) {
+      if (['not_fulfilled', 'partially_fulfilled'].includes(fs) && !completedSession) {
+        counts['por-preparar']++;
+      }
+      if (fs === 'fulfilled' && completedSession) {
         counts.preparados++;
-        if (session.totalMissing > 0 && session.faltanteResolution === 'pending') {
+        if (completedSession.totalMissing > 0 && completedSession.faltanteResolution === 'pending') {
           counts.faltantes++;
         } else {
           counts['por-enviar']++;
