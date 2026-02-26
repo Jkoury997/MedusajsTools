@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
 import { PickingSession, audit } from '@/lib/mongodb/models';
+import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
 
 // GET /api/gestion/faltantes/receive?orderId=xxx - Obtener items faltantes para escaneo
 export async function GET(req: NextRequest) {
@@ -104,13 +105,49 @@ export async function POST(req: NextRequest) {
       session.faltanteNotes = (session.faltanteNotes || '') + ' | Mercadería recibida completa';
       await session.save();
 
+      // Crear fulfillment en Medusa para los items faltantes recibidos
+      let fulfillmentCreated = false;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const orderData = await medusaRequest<{ order: any }>(
+          `/admin/orders/${orderId}?fields=+items.*,+fulfillments.*`
+        );
+        const order = orderData.order;
+
+        // Buscar items del pedido que fueron faltantes y calcular cantidad a fulfil
+        const fulfillmentItems: { id: string; quantity: number }[] = [];
+        for (const missingSessionItem of session.items) {
+          if ((missingSessionItem.quantityMissing || 0) <= 0) continue;
+
+          // Buscar el item correspondiente en Medusa
+          const medusaItem = order.items?.find((i: any) => i.id === missingSessionItem.lineItemId);
+          if (medusaItem) {
+            fulfillmentItems.push({
+              id: medusaItem.id,
+              quantity: missingSessionItem.quantityMissing || 0,
+            });
+          }
+        }
+
+        if (fulfillmentItems.length > 0) {
+          await medusaRequest(`/admin/orders/${orderId}/fulfillments`, {
+            method: 'POST',
+            body: { items: fulfillmentItems },
+          });
+          fulfillmentCreated = true;
+          invalidateOrdersCache();
+        }
+      } catch (fulfillError) {
+        console.error('[Receive] Error creating fulfillment for received faltantes:', fulfillError);
+      }
+
       audit({
         action: 'item_missing',
         userName: session.userName,
         orderId,
         orderDisplayId: session.orderDisplayId,
-        details: 'Todos los faltantes fueron recibidos por escaneo',
-        metadata: { resolution: 'resolved', method: 'scan' },
+        details: `Todos los faltantes fueron recibidos por escaneo${fulfillmentCreated ? ' - Fulfillment creado en Medusa' : ''}`,
+        metadata: { resolution: 'resolved', method: 'scan', fulfillmentCreated },
       });
     }
 
