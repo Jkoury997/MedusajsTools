@@ -188,6 +188,7 @@ export type AuditAction =
   | 'order_pack'
   | 'fulfillment_create'
   | 'fulfillment_error'
+  | 'order_ship'
   | 'order_deliver'
   | 'user_create'
   | 'user_update'
