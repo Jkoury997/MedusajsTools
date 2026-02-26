@@ -172,6 +172,7 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
   const [lastScannedItemId, setLastScannedItemId] = useState<string | null>(null);
   const [lastScannedName, setLastScannedName] = useState<string | null>(null);
   const [manualMode, setManualMode] = useState(false);
+  const [showWrongArticlePopup, setShowWrongArticlePopup] = useState(false);
 
   // Completion
   const [completing, setCompleting] = useState(false);
@@ -464,9 +465,13 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
           setTimeout(() => { setLastScannedItemId(null); setLastScannedName(null); }, 2500);
         }
       } else {
-        setPickError(data.error);
+        setBarcodeInput('');
+        setShowWrongArticlePopup(true);
         errorFeedback();
-        setTimeout(() => setPickError(''), 3000);
+        setTimeout(() => {
+          setShowWrongArticlePopup(false);
+          barcodeRef.current?.focus();
+        }, 2000);
       }
     } catch {
       setPickError('Error de conexión');
@@ -871,6 +876,7 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
             <input
               ref={barcodeRef}
               type="text"
+              inputMode="none"
               value={barcodeInput}
               onChange={(e) => setBarcodeInput(e.target.value)}
               placeholder="Escanear código de barras..."
@@ -1099,6 +1105,27 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
           </button>
         </div>
       </div>
+
+      {/* Wrong Article Popup */}
+      {showWrongArticlePopup && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-10 h-10 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Artículo incorrecto</h3>
+            <p className="text-gray-500 text-sm mb-4">El código escaneado no corresponde a ningún artículo de este pedido.</p>
+            <button
+              onClick={() => { setShowWrongArticlePopup(false); barcodeRef.current?.focus(); }}
+              className="w-full py-3 bg-red-500 text-white rounded-xl font-bold text-sm active:bg-red-600"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal de cancelación con razón obligatoria */}
       {showCancelModal && (
