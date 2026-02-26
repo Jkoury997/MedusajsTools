@@ -12,6 +12,7 @@ interface MissingItem {
   quantityRequired: number;
   quantityPicked: number;
   quantityMissing: number;
+  unitPrice?: number;
 }
 
 interface AuditLogEntry {
@@ -379,7 +380,15 @@ function FaltanteCard({ order, onResolve, onRefresh }: { order: OrderData; onRes
           {/* Action buttons */}
           <div className="grid grid-cols-2 gap-2 mt-2">
             <button
-              onClick={() => { setShowModal(true); setModalStep('voucher'); }}
+              onClick={() => {
+                // Pre-calcular valor del voucher basado en precio de items faltantes
+                const missingValue = (order.session?.missingItems || []).reduce(
+                  (sum, item) => sum + (item.unitPrice || 0) * item.quantityMissing, 0
+                );
+                if (missingValue > 0) setVoucherValue(String(missingValue));
+                setShowModal(true);
+                setModalStep('voucher');
+              }}
               className="py-2.5 bg-purple-500 text-white rounded-xl text-sm font-bold active:bg-purple-600 flex items-center justify-center gap-1.5"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -452,9 +461,21 @@ function FaltanteCard({ order, onResolve, onRefresh }: { order: OrderData; onRes
             {modalStep === 'voucher' && (
               <div className="p-5">
                 <h3 className="text-lg font-bold text-gray-900 mb-1">Crear voucher</h3>
-                <p className="text-sm text-gray-500 mb-4">
+                <p className="text-sm text-gray-500 mb-2">
                   Pedido #{order.displayId} — {order.session?.totalMissing} artículo{(order.session?.totalMissing || 0) !== 1 ? 's' : ''} faltante{(order.session?.totalMissing || 0) !== 1 ? 's' : ''}
                 </p>
+
+                {/* Desglose del valor de faltantes */}
+                {order.session?.missingItems && order.session.missingItems.some(i => i.unitPrice) && (
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-2 mb-3 text-xs">
+                    {order.session.missingItems.map((item, i) => (
+                      <div key={i} className="flex justify-between text-purple-800">
+                        <span>{item.sku || item.barcode || 'Item'} x{item.quantityMissing}</span>
+                        <span className="font-medium">{formatPrice((item.unitPrice || 0) * item.quantityMissing)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <label className="text-sm font-medium text-gray-700 block mb-1">
                   Valor del voucher

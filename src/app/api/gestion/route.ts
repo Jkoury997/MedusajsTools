@@ -86,14 +86,18 @@ export async function GET(req: NextRequest) {
           faltanteNotes: completedSession.faltanteNotes,
           missingItems: completedSession.items
             ?.filter((i: any) => (i.quantityMissing || 0) > 0)
-            .map((i: any) => ({
-              lineItemId: i.lineItemId,
-              sku: i.sku,
-              barcode: i.barcode,
-              quantityRequired: i.quantityRequired,
-              quantityPicked: i.quantityPicked,
-              quantityMissing: i.quantityMissing,
-            })) || [],
+            .map((i: any) => {
+              const medusaItem = order.items?.find((oi: any) => oi.id === i.lineItemId);
+              return {
+                lineItemId: i.lineItemId,
+                sku: i.sku,
+                barcode: i.barcode,
+                quantityRequired: i.quantityRequired,
+                quantityPicked: i.quantityPicked,
+                quantityMissing: i.quantityMissing,
+                unitPrice: medusaItem?.unit_price || 0,
+              };
+            }) || [],
         } : null,
         // Info de sesión en progreso (para tab por-preparar)
         inProgressSession: inProgressSession ? {
