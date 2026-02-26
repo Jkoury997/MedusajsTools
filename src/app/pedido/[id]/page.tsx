@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getOrderById, Order, LineItem } from '@/lib/medusa';
 import PrintButton from './PrintButton';
 import PickingInterface from './PickingInterface';
+import FaltanteReceiveInterface from './FaltanteReceiveInterface';
 import StoreLabel from './StoreLabel';
 import DeliverButton from './DeliverButton';
 import { isFactoryPickup as checkFactoryPickup } from '@/lib/shipping';
@@ -524,6 +525,15 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
           orderItems={sortedItems}
           fulfillmentStatus={order.fulfillment_status || 'not_fulfilled'}
         />
+
+        {/* Faltante Receive Interface - para pedidos fulfilled con faltantes en espera */}
+        {(order.fulfillment_status === 'fulfilled') && (
+          <FaltanteReceiveInterface
+            orderId={order.id}
+            orderDisplayId={order.display_id}
+            orderItems={sortedItems}
+          />
+        )}
       </div>
 
       {/* Print Footer */}
