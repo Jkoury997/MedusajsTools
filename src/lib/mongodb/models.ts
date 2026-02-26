@@ -36,6 +36,7 @@ export interface IPickingItem {
   quantityRequired: number;
   quantityPicked: number;
   quantityMissing?: number;
+  quantityReceived?: number; // Cantidad recibida de faltantes
   pickedAt?: Date;
   scanMethod?: 'barcode' | 'manual' | 'sku';
 }
@@ -64,6 +65,10 @@ export interface IPickingSession extends Document {
   totalRequired: number;
   totalPicked: number;
   totalMissing: number;
+  // Resolución de faltantes
+  faltanteResolution?: 'pending' | 'voucher' | 'waiting' | 'resolved' | null;
+  faltanteResolvedAt?: Date;
+  faltanteNotes?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -77,6 +82,7 @@ const PickingItemSchema = new Schema<IPickingItem>(
     quantityRequired: { type: Number, required: true },
     quantityPicked: { type: Number, default: 0 },
     quantityMissing: { type: Number, default: 0 },
+    quantityReceived: { type: Number, default: 0 },
     pickedAt: { type: Date },
     scanMethod: { type: String, enum: ['barcode', 'manual', 'sku'] },
   },
@@ -113,6 +119,10 @@ const PickingSessionSchema = new Schema<IPickingSession>(
     totalRequired: { type: Number, default: 0 },
     totalPicked: { type: Number, default: 0 },
     totalMissing: { type: Number, default: 0 },
+    // Resolución de faltantes
+    faltanteResolution: { type: String, enum: ['pending', 'voucher', 'waiting', 'resolved', null], default: null },
+    faltanteResolvedAt: { type: Date },
+    faltanteNotes: { type: String },
   },
   { timestamps: true }
 );
