@@ -6,6 +6,8 @@ import FaltanteReceiveInterface from './FaltanteReceiveInterface';
 import StoreLabel from './StoreLabel';
 import DeliverButton from './DeliverButton';
 import { isFactoryPickup as checkFactoryPickup } from '@/lib/shipping';
+import { connectDB } from '@/lib/mongodb/connection';
+import { PickingSession } from '@/lib/mongodb/models';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -402,6 +404,25 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
     );
   }
 
+  // Verificar si hay una sesión completada con faltantes para este pedido
+  let hasCompletedSessionWithFaltantes = false;
+  try {
+    await connectDB();
+    const completedSession = await PickingSession.findOne({
+      orderId: order.id,
+      status: 'completed',
+      'items.quantityMissing': { $gt: 0 },
+    }).select('faltanteResolution').lean();
+
+    if (completedSession && ['pending', 'waiting'].includes(completedSession.faltanteResolution || '')) {
+      hasCompletedSessionWithFaltantes = true;
+    }
+  } catch (e) {
+    console.error('Error checking completed session:', e);
+  }
+
+  const fulfillmentStatus = order.fulfillment_status || 'not_fulfilled';
+
   // Ordenar items alfabéticamente por nombre de producto, luego por talle
   const sortedItems = [...order.items].sort((a, b) => {
     const nameA = getProductName(a).toLowerCase();
@@ -518,16 +539,18 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
           fulfillmentStatus={order.fulfillment_status || 'not_fulfilled'}
         />
 
-        {/* Picking Interface */}
-        <PickingInterface
-          orderId={order.id}
-          orderDisplayId={order.display_id}
-          orderItems={sortedItems}
-          fulfillmentStatus={order.fulfillment_status || 'not_fulfilled'}
-        />
+        {/* Picking Interface - solo si no hay sesión completada con faltantes pendientes */}
+        {!hasCompletedSessionWithFaltantes && (
+          <PickingInterface
+            orderId={order.id}
+            orderDisplayId={order.display_id}
+            orderItems={sortedItems}
+            fulfillmentStatus={fulfillmentStatus}
+          />
+        )}
 
-        {/* Faltante Receive Interface - para pedidos fulfilled con faltantes en espera */}
-        {(order.fulfillment_status === 'fulfilled') && (
+        {/* Faltante Receive Interface - para pedidos con sesión completada y faltantes en espera */}
+        {hasCompletedSessionWithFaltantes && (
           <FaltanteReceiveInterface
             orderId={order.id}
             orderDisplayId={order.display_id}
