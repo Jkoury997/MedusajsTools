@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
           ? `${order.customer.first_name} ${order.customer.last_name}`
           : order.shipping_address?.first_name && order.shipping_address?.last_name
             ? `${order.shipping_address.first_name} ${order.shipping_address.last_name}`
-            : order.email || 'Sin nombre',
+            : order.email || order.customer?.email || 'Sin nombre',
         address: order.shipping_address
           ? `${order.shipping_address.address_1}, ${order.shipping_address.city}`
           : null,

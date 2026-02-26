@@ -401,7 +401,7 @@ export default function TiendaPage() {
                 ? `${order.shipping_address.first_name} ${order.shipping_address.last_name || ''}`.trim()
                 : order.customer?.first_name
                   ? `${order.customer.first_name} ${order.customer.last_name || ''}`.trim()
-                  : 'Sin nombre';
+                  : order.email || order.customer?.email || 'Sin nombre';
               const phone = order.shipping_address?.phone || order.customer?.phone || '';
               const email = order.email || order.customer?.email || '';
               const dni = order.shipping_address?.metadata?.dni || '';
