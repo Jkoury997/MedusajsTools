@@ -3,7 +3,16 @@ import { connectDB } from '@/lib/mongodb/connection';
 import { PickingSession, audit } from '@/lib/mongodb/models';
 import { medusaRequest } from '@/lib/medusa';
 
-// POST /api/gestion/faltantes/voucher - Crear gift card en Medusa y resolver faltante
+function generateVoucherCode(orderDisplayId: number): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let random = '';
+  for (let i = 0; i < 6; i++) {
+    random += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return `VOUCHER-${orderDisplayId}-${random}`;
+}
+
+// POST /api/gestion/faltantes/voucher - Crear promoción (voucher) en Medusa y resolver faltante
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
@@ -25,44 +34,49 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Obtener datos del pedido para region_id
+    // Obtener datos del pedido para currency_code
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const orderData = await medusaRequest<{ order: any }>(
       `/admin/orders/${orderId}?fields=+shipping_address.*,+customer.*`
     );
     const order = orderData.order;
-    const regionId = order.region_id;
+    const currencyCode = order.currency_code;
 
-    if (!regionId) {
+    if (!currencyCode) {
       return NextResponse.json(
-        { success: false, error: 'El pedido no tiene region_id' },
+        { success: false, error: 'El pedido no tiene currency_code' },
         { status: 400 }
       );
     }
 
-    // Crear gift card en Medusa
+    const voucherCode = generateVoucherCode(session.orderDisplayId || 0);
+    const roundedValue = Math.round(value);
+
+    // Crear promoción (voucher) en Medusa v2 via Promotions API
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const giftCardData = await medusaRequest<{ gift_card: any }>('/admin/gift-cards', {
+    const promoData = await medusaRequest<{ promotion: any }>('/admin/promotions', {
       method: 'POST',
       body: {
-        value: Math.round(value),
-        region_id: regionId,
-        is_disabled: false,
-        metadata: {
-          orderId,
-          orderDisplayId: session.orderDisplayId,
-          reason: 'faltante_compensation',
-          notes: notes || '',
+        code: voucherCode,
+        type: 'standard',
+        is_automatic: false,
+        status: 'active',
+        application_method: {
+          type: 'fixed',
+          target_type: 'order',
+          value: roundedValue,
+          currency_code: currencyCode,
+          description: `Compensación por faltante - Pedido #${session.orderDisplayId}`,
         },
       },
     });
 
-    const giftCard = giftCardData.gift_card;
+    const promotion = promoData.promotion;
 
     // Actualizar sesión con resolución voucher
     session.faltanteResolution = 'voucher';
     session.faltanteResolvedAt = new Date();
-    session.faltanteNotes = `Voucher: ${giftCard.code} - Valor: $${value}${notes ? ` - ${notes}` : ''}`;
+    session.faltanteNotes = `Voucher: ${promotion.code} - Valor: $${roundedValue}${notes ? ` - ${notes}` : ''}`;
     await session.save();
 
     // Audit log
@@ -71,12 +85,12 @@ export async function POST(req: NextRequest) {
       userName: session.userName,
       orderId,
       orderDisplayId: session.orderDisplayId,
-      details: `Voucher creado: ${giftCard.code} por $${value}`,
+      details: `Voucher creado: ${promotion.code} por $${roundedValue}`,
       metadata: {
         resolution: 'voucher',
-        giftCardId: giftCard.id,
-        giftCardCode: giftCard.code,
-        giftCardValue: value,
+        promotionId: promotion.id,
+        promotionCode: promotion.code,
+        promotionValue: roundedValue,
         notes,
       },
     });
@@ -85,13 +99,14 @@ export async function POST(req: NextRequest) {
     const customerName = order.shipping_address?.first_name || order.customer?.first_name || '';
     const phone = order.shipping_address?.phone || '';
 
+    // Mantener misma estructura de respuesta para el frontend
     return NextResponse.json({
       success: true,
       giftCard: {
-        id: giftCard.id,
-        code: giftCard.code,
-        value: giftCard.value,
-        balance: giftCard.balance,
+        id: promotion.id,
+        code: promotion.code,
+        value: roundedValue,
+        balance: roundedValue,
       },
       customer: {
         name: customerName,
