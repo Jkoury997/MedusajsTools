@@ -35,7 +35,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Obtener datos del pedido para region_id
-    const orderRes = await fetch(`${MEDUSA_BACKEND_URL}/admin/orders/${orderId}?fields=+shipping_address.*,+customer.*`, {
+    const orderUrl = `${MEDUSA_BACKEND_URL}/admin/orders/${orderId}?fields=+shipping_address.*,+customer.*`;
+    console.log('[Voucher] Fetching order from:', orderUrl);
+
+    const orderRes = await fetch(orderUrl, {
       headers: {
         'Authorization': `Basic ${STATS_API_KEY}`,
       },
@@ -43,9 +46,9 @@ export async function POST(req: NextRequest) {
 
     if (!orderRes.ok) {
       const errText = await orderRes.text();
-      console.error('[Voucher] Error fetching order:', errText);
+      console.error(`[Voucher] Error fetching order: status=${orderRes.status} body=${errText}`);
       return NextResponse.json(
-        { success: false, error: 'No se pudo obtener datos del pedido' },
+        { success: false, error: `No se pudo obtener datos del pedido (${orderRes.status})` },
         { status: 500 }
       );
     }
