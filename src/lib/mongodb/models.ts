@@ -64,6 +64,10 @@ export interface IPickingSession extends Document {
   totalRequired: number;
   totalPicked: number;
   totalMissing: number;
+  // Resolución de faltantes
+  faltanteResolution?: 'pending' | 'voucher' | 'waiting' | 'resolved' | null;
+  faltanteResolvedAt?: Date;
+  faltanteNotes?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -113,6 +117,10 @@ const PickingSessionSchema = new Schema<IPickingSession>(
     totalRequired: { type: Number, default: 0 },
     totalPicked: { type: Number, default: 0 },
     totalMissing: { type: Number, default: 0 },
+    // Resolución de faltantes
+    faltanteResolution: { type: String, enum: ['pending', 'voucher', 'waiting', 'resolved', null], default: null },
+    faltanteResolvedAt: { type: Date },
+    faltanteNotes: { type: String },
   },
   { timestamps: true }
 );

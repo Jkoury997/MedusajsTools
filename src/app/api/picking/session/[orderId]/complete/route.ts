@@ -63,6 +63,13 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     session.completedAt = new Date();
     session.durationSeconds = durationSeconds;
     session.completedByName = user.name;
+
+    // Si hay faltantes, marcar resolución como pendiente
+    const hasMissing = session.items.some(i => (i.quantityMissing || 0) > 0);
+    if (hasMissing) {
+      session.faltanteResolution = 'pending';
+    }
+
     await session.save();
 
     const totalMissing = session.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
