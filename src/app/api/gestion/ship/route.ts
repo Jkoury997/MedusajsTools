@@ -45,9 +45,9 @@ export async function POST(req: NextRequest) {
     for (const fulfillment of fulfillments) {
       if (fulfillment.shipped_at) continue;
 
-      // Medusa v2 requiere items en el body del shipment
+      // Medusa v2 requiere items en el body del shipment (usando line_item_id, no fulfillment item id)
       const shipmentItems = (fulfillment.items || []).map((item: any) => ({
-        id: item.id,
+        id: item.line_item_id,
         quantity: item.quantity,
       }));
 
