@@ -112,17 +112,17 @@ export async function GET(req: NextRequest) {
           break;
 
         case 'faltantes':
-          // Pedidos con faltantes pendientes de resolución
-          if (completedSession && completedSession.totalMissing > 0 && completedSession.faltanteResolution === 'pending') {
+          // Pedidos con faltantes no resueltos (pending o esperando mercadería)
+          if (completedSession && completedSession.totalMissing > 0 && ['pending', 'waiting'].includes(completedSession.faltanteResolution)) {
             results.push(orderData);
           }
           break;
 
         case 'por-enviar':
-          // Pedidos fulfilled, sin faltantes pendientes, listos para enviar
+          // Pedidos fulfilled, sin faltantes sin resolver, listos para enviar
           if (fulfillmentStatus === 'fulfilled' && completedSession) {
-            const hasPendingFaltantes = completedSession.totalMissing > 0 && completedSession.faltanteResolution === 'pending';
-            if (!hasPendingFaltantes) {
+            const hasUnresolvedFaltantes = completedSession.totalMissing > 0 && ['pending', 'waiting'].includes(completedSession.faltanteResolution);
+            if (!hasUnresolvedFaltantes) {
               results.push(orderData);
             }
           }
@@ -161,7 +161,8 @@ export async function GET(req: NextRequest) {
       }
       if (fs === 'fulfilled' && completedSession) {
         counts.preparados++;
-        if (completedSession.totalMissing > 0 && completedSession.faltanteResolution === 'pending') {
+        const hasUnresolvedFaltantes = completedSession.totalMissing > 0 && ['pending', 'waiting'].includes(completedSession.faltanteResolution);
+        if (hasUnresolvedFaltantes) {
           counts.faltantes++;
         } else {
           counts['por-enviar']++;

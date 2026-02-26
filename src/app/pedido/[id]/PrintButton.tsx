@@ -48,13 +48,13 @@ export default function PrintButton({ orderId, orderDisplayId, orderItems, fulfi
       return;
     }
 
-    // Si no está preparado, primero verificar si ya hay sesión activa
+    // Si no está preparado, verificar si ya hay sesión activa o completada
     try {
-      const res = await fetch(`/api/picking/session/${orderId}`);
+      const res = await fetch(`/api/picking/session/${orderId}?includeCompleted=true`);
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.session) {
-          // Ya hay sesión activa, imprimir directo
+          // Ya hay sesión (activa o completada), imprimir directo
           window.print();
           return;
         }
