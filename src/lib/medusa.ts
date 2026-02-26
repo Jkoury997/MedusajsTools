@@ -1,85 +1,20 @@
 const MEDUSA_BACKEND_URL = process.env.MEDUSA_BACKEND_URL || 'https://backend.marcelakoury.com';
-const MEDUSA_ADMIN_EMAIL = process.env.MEDUSA_ADMIN_EMAIL || '';
-const MEDUSA_ADMIN_PASSWORD = process.env.MEDUSA_ADMIN_PASSWORD || '';
-
-// Caché del token con expiración (50 minutos para ser conservadores, tokens suelen durar 1 hora)
-const TOKEN_CACHE_DURATION = 50 * 60 * 1000;
-let authToken: string | null = null;
-let tokenExpiry: number = 0;
-
-// Promise para evitar múltiples logins simultáneos
-let loginPromise: Promise<string> | null = null;
+const MEDUSA_SECRET_API_KEY = process.env.MEDUSA_SECRET_API_KEY || '';
 
 interface MedusaRequestOptions {
   method?: string;
   body?: unknown;
 }
 
-// Login to get auth token
-async function login(): Promise<string> {
-  console.log('[Medusa Auth] 🔐 Iniciando login...');
-  const startTime = Date.now();
-
-  const response = await fetch(`${MEDUSA_BACKEND_URL}/auth/user/emailpass`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      email: MEDUSA_ADMIN_EMAIL,
-      password: MEDUSA_ADMIN_PASSWORD,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Login error:', errorText);
-    throw new Error(`Login failed: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  console.log(`[Medusa Auth] ✅ Login exitoso en ${Date.now() - startTime}ms`);
-
-  // Guardar token y tiempo de expiración
-  authToken = data.token;
-  tokenExpiry = Date.now() + TOKEN_CACHE_DURATION;
-
-  return data.token;
-}
-
-// Get auth token, login if needed (con manejo de requests concurrentes)
-async function getAuthToken(): Promise<string> {
-  // Si el token es válido, devolverlo inmediatamente
-  if (authToken && Date.now() < tokenExpiry) {
-    return authToken;
-  }
-
-  // Si ya hay un login en proceso, esperar a que termine
-  if (loginPromise) {
-    return loginPromise;
-  }
-
-  // Iniciar nuevo login
-  loginPromise = login().finally(() => {
-    loginPromise = null;
-  });
-
-  return loginPromise;
-}
-
 export async function medusaRequest<T>(endpoint: string, options: MedusaRequestOptions = {}): Promise<T> {
   const { method = 'GET', body } = options;
   const startTime = Date.now();
 
-  console.log(`[Medusa API] 🚀 ${method} ${endpoint}`);
-
-  const token = await getAuthToken();
-  const tokenTime = Date.now();
-  console.log(`[Medusa API] 🔑 Token obtenido en ${tokenTime - startTime}ms`);
+  console.log(`[Medusa API] ${method} ${endpoint}`);
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`,
+    'Authorization': `Basic ${MEDUSA_SECRET_API_KEY}`,
   };
 
   const response = await fetch(`${MEDUSA_BACKEND_URL}${endpoint}`, {
@@ -89,39 +24,11 @@ export async function medusaRequest<T>(endpoint: string, options: MedusaRequestO
     cache: 'no-store',
   });
 
-  const fetchTime = Date.now();
-  console.log(`[Medusa API] 📥 Response ${response.status} en ${fetchTime - tokenTime}ms (total: ${fetchTime - startTime}ms)`);
-
-  // If unauthorized, try to login again
-  if (response.status === 401) {
-    authToken = null;
-    const newToken = await getAuthToken();
-
-    const retryResponse = await fetch(`${MEDUSA_BACKEND_URL}${endpoint}`, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${newToken}`,
-      },
-      body: body ? JSON.stringify(body) : undefined,
-      cache: 'no-store',
-    });
-
-    if (!retryResponse.ok) {
-      const errorText = await retryResponse.text();
-      console.error('Medusa API Error after retry:', {
-        status: retryResponse.status,
-        body: errorText,
-      });
-      throw new Error(`Medusa API error: ${retryResponse.status} ${retryResponse.statusText}`);
-    }
-
-    return retryResponse.json();
-  }
+  console.log(`[Medusa API] Response ${response.status} en ${Date.now() - startTime}ms`);
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('[Medusa API] ❌ Error:', {
+    console.error('[Medusa API] Error:', {
       status: response.status,
       statusText: response.statusText,
       body: errorText,
@@ -131,8 +38,7 @@ export async function medusaRequest<T>(endpoint: string, options: MedusaRequestO
   }
 
   const result = await response.json();
-  const endTime = Date.now();
-  console.log(`[Medusa API] ✅ Completado en ${endTime - startTime}ms total`);
+  console.log(`[Medusa API] Completado en ${Date.now() - startTime}ms`);
   return result;
 }
 
