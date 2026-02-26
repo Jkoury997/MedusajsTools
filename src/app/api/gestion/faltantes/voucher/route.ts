@@ -3,7 +3,7 @@ import { connectDB } from '@/lib/mongodb/connection';
 import { PickingSession, audit } from '@/lib/mongodb/models';
 
 const MEDUSA_BACKEND_URL = process.env.MEDUSA_BACKEND_URL || 'https://backend.marcelakoury.com';
-const MEDUSA_API_KEY = process.env.MEDUSA_API_KEY || '';
+const STATS_API_KEY = process.env.STATS_API_KEY || '';
 
 // POST /api/gestion/faltantes/voucher - Crear gift card en Medusa y resolver faltante
 export async function POST(req: NextRequest) {
@@ -18,9 +18,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!MEDUSA_API_KEY) {
+    if (!STATS_API_KEY) {
       return NextResponse.json(
-        { success: false, error: 'MEDUSA_API_KEY no configurada' },
+        { success: false, error: 'STATS_API_KEY no configurada' },
         { status: 500 }
       );
     }
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     // Obtener datos del pedido para region_id
     const orderRes = await fetch(`${MEDUSA_BACKEND_URL}/admin/orders/${orderId}?fields=+shipping_address.*,+customer.*`, {
       headers: {
-        'Authorization': `Basic ${MEDUSA_API_KEY}`,
+        'Authorization': `Basic ${STATS_API_KEY}`,
       },
     });
 
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Basic ${MEDUSA_API_KEY}`,
+        'Authorization': `Basic ${STATS_API_KEY}`,
       },
       body: JSON.stringify({
         value: Math.round(value),
