@@ -16,10 +16,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Obtener el pedido con fulfillments
+    // Obtener el pedido con fulfillments e items de cada fulfillment
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const orderData = await medusaRequest<{ order: any }>(
-      `/admin/orders/${orderId}?fields=+fulfillments.*`
+      `/admin/orders/${orderId}?fields=+fulfillments.*,+fulfillments.items.*`
     );
 
     const order = orderData.order;
