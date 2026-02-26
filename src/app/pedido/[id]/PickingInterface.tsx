@@ -802,14 +802,7 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
               </div>
             </div>
             <button
-              onClick={() => {
-                const backUrl = new URLSearchParams(window.location.search).get('from');
-                if (backUrl === 'gestion') {
-                  window.location.href = '/gestion';
-                } else {
-                  window.location.href = backUrl ? `/?estado=${backUrl}` : '/';
-                }
-              }}
+              onClick={() => { window.location.href = '/gestion'; }}
               className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
