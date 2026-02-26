@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
       session.faltanteNotes = (session.faltanteNotes || '') + ' | Mercadería recibida completa';
       await session.save();
 
-      // Crear fulfillment en Medusa para los items faltantes recibidos
+      // Crear UN SOLO fulfillment en Medusa con TODOS los items (pickeados + faltantes recibidos)
       let fulfillmentCreated = false;
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -114,17 +114,17 @@ export async function POST(req: NextRequest) {
         );
         const order = orderData.order;
 
-        // Buscar items del pedido que fueron faltantes y calcular cantidad a fulfil
+        // Construir fulfillment con cantidad total por item (picked + missing)
         const fulfillmentItems: { id: string; quantity: number }[] = [];
-        for (const missingSessionItem of session.items) {
-          if ((missingSessionItem.quantityMissing || 0) <= 0) continue;
+        for (const sessionItem of session.items) {
+          const totalQty = sessionItem.quantityPicked + (sessionItem.quantityMissing || 0);
+          if (totalQty <= 0) continue;
 
-          // Buscar el item correspondiente en Medusa
-          const medusaItem = order.items?.find((i: any) => i.id === missingSessionItem.lineItemId);
+          const medusaItem = order.items?.find((i: any) => i.id === sessionItem.lineItemId);
           if (medusaItem) {
             fulfillmentItems.push({
               id: medusaItem.id,
-              quantity: missingSessionItem.quantityMissing || 0,
+              quantity: totalQty,
             });
           }
         }
