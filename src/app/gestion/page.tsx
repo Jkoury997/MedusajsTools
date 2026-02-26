@@ -175,17 +175,90 @@ function PreparadoCard({ order }: { order: OrderData }) {
   );
 }
 
-function FaltanteCard({ order, onResolve }: { order: OrderData; onResolve: (orderId: string, resolution: string, notes: string) => void }) {
-  const [showModal, setShowModal] = useState(false);
-  const [notes, setNotes] = useState('');
-  const [resolving, setResolving] = useState(false);
+function formatWhatsAppNumber(phone: string): string {
+  let cleanNumber = phone.replace(/\D/g, '');
+  if (cleanNumber.startsWith('54')) return cleanNumber;
+  if (cleanNumber.startsWith('0')) cleanNumber = cleanNumber.substring(1);
+  if (cleanNumber.startsWith('15')) cleanNumber = cleanNumber.substring(2);
+  if (cleanNumber.length === 10) return `54${cleanNumber}`;
+  if (cleanNumber.length === 8) return `5411${cleanNumber}`;
+  return `54${cleanNumber}`;
+}
 
-  async function handleResolve(resolution: string) {
+function FaltanteCard({ order, onResolve, onRefresh }: { order: OrderData; onResolve: (orderId: string, resolution: string, notes: string) => void; onRefresh: () => void }) {
+  const [showModal, setShowModal] = useState(false);
+  const [modalStep, setModalStep] = useState<'choose' | 'voucher' | 'voucher-result'>('choose');
+  const [notes, setNotes] = useState('');
+  const [voucherValue, setVoucherValue] = useState('');
+  const [resolving, setResolving] = useState(false);
+  const [voucherResult, setVoucherResult] = useState<{
+    code: string;
+    value: number;
+    customerName: string;
+    phone: string;
+    orderDisplayId: number;
+  } | null>(null);
+
+  async function handleWaiting() {
     setResolving(true);
-    await onResolve(order.id, resolution, notes);
+    await onResolve(order.id, 'waiting', notes);
     setResolving(false);
     setShowModal(false);
     setNotes('');
+  }
+
+  async function handleVoucher() {
+    if (!voucherValue || Number(voucherValue) <= 0) return;
+
+    setResolving(true);
+    try {
+      const res = await fetch('/api/gestion/faltantes/voucher', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: order.id,
+          value: Number(voucherValue),
+          notes,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setVoucherResult({
+          code: data.giftCard.code,
+          value: data.giftCard.value,
+          customerName: data.customer.name,
+          phone: data.customer.phone,
+          orderDisplayId: data.orderDisplayId,
+        });
+        setModalStep('voucher-result');
+      } else {
+        alert(data.error || 'Error al crear voucher');
+      }
+    } catch {
+      alert('Error de conexión');
+    } finally {
+      setResolving(false);
+    }
+  }
+
+  function getWhatsAppUrl() {
+    if (!voucherResult?.phone) return '';
+    const waNumber = formatWhatsAppNumber(voucherResult.phone);
+    const message = encodeURIComponent(
+      `Hola ${voucherResult.customerName}! Te escribimos de Marcela Koury por tu pedido #${voucherResult.orderDisplayId}. Lamentamos que algunos artículos no estuvieron disponibles. Te generamos un voucher de compensación por $${voucherResult.value}. Tu código es: *${voucherResult.code}* Podés usarlo en tu próxima compra. Disculpá las molestias!`
+    );
+    return `https://wa.me/${waNumber}?text=${message}`;
+  }
+
+  function closeModal() {
+    setShowModal(false);
+    setModalStep('choose');
+    setNotes('');
+    setVoucherValue('');
+    setVoucherResult(null);
+    if (voucherResult) {
+      onRefresh();
+    }
   }
 
   return (
@@ -222,19 +295,25 @@ function FaltanteCard({ order, onResolve }: { order: OrderData; onResolve: (orde
           )}
 
           {/* Action buttons */}
-          <div className="flex gap-2 mt-3">
+          <div className="grid grid-cols-2 gap-2 mt-3">
             <button
-              onClick={() => setShowModal(true)}
-              className="flex-1 py-2.5 bg-red-500 text-white rounded-xl text-sm font-bold active:bg-red-600"
+              onClick={() => { setShowModal(true); setModalStep('voucher'); }}
+              className="py-2.5 bg-purple-500 text-white rounded-xl text-sm font-bold active:bg-purple-600 flex items-center justify-center gap-1.5"
             >
-              Resolver
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+              </svg>
+              Voucher
             </button>
-            <Link
-              href={`/pedido/${order.id}?from=gestion`}
-              className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium active:bg-gray-200 flex items-center"
+            <button
+              onClick={() => { setShowModal(true); setModalStep('choose'); }}
+              className="py-2.5 bg-yellow-500 text-white rounded-xl text-sm font-bold active:bg-yellow-600 flex items-center justify-center gap-1.5"
             >
-              Ver
-            </Link>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Esperar
+            </button>
           </div>
         </div>
       </div>
@@ -243,51 +322,128 @@ function FaltanteCard({ order, onResolve }: { order: OrderData; onResolve: (orde
       {showModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
-            <div className="p-5">
-              <h3 className="text-lg font-bold text-gray-900 mb-1">Resolver faltantes</h3>
-              <p className="text-sm text-gray-500 mb-4">
-                Pedido #{order.displayId} — {order.session?.totalMissing} artículo{(order.session?.totalMissing || 0) !== 1 ? 's' : ''} faltante{(order.session?.totalMissing || 0) !== 1 ? 's' : ''}
-              </p>
 
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Notas (opcional)..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm mb-4 resize-none h-20 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
+            {/* Step: Choose (waiting confirmation) */}
+            {modalStep === 'choose' && (
+              <div className="p-5">
+                <h3 className="text-lg font-bold text-gray-900 mb-1">Esperar mercadería</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Pedido #{order.displayId} — {order.session?.totalMissing} artículo{(order.session?.totalMissing || 0) !== 1 ? 's' : ''} faltante{(order.session?.totalMissing || 0) !== 1 ? 's' : ''}
+                </p>
+                <p className="text-sm text-gray-600 mb-4">
+                  Cuando la mercadería llegue, vas a poder escanear los artículos para confirmar la recepción.
+                </p>
 
-              <div className="space-y-2">
-                <button
-                  onClick={() => handleResolve('voucher')}
-                  disabled={resolving}
-                  className="w-full py-3 bg-purple-500 text-white rounded-xl text-sm font-bold active:bg-purple-600 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
-                  </svg>
-                  Voucher de compensación
-                </button>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Notas (opcional)..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm mb-4 resize-none h-16 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                />
 
                 <button
-                  onClick={() => handleResolve('waiting')}
+                  onClick={handleWaiting}
                   disabled={resolving}
                   className="w-full py-3 bg-yellow-500 text-white rounded-xl text-sm font-bold active:bg-yellow-600 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  Esperar mercadería
+                  {resolving ? 'Guardando...' : 'Confirmar espera'}
                 </button>
               </div>
-            </div>
+            )}
+
+            {/* Step: Voucher value input */}
+            {modalStep === 'voucher' && (
+              <div className="p-5">
+                <h3 className="text-lg font-bold text-gray-900 mb-1">Crear voucher</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Pedido #{order.displayId} — {order.session?.totalMissing} artículo{(order.session?.totalMissing || 0) !== 1 ? 's' : ''} faltante{(order.session?.totalMissing || 0) !== 1 ? 's' : ''}
+                </p>
+
+                <label className="text-sm font-medium text-gray-700 block mb-1">
+                  Valor del voucher
+                </label>
+                <div className="relative mb-3">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-lg font-bold">$</span>
+                  <input
+                    type="number"
+                    value={voucherValue}
+                    onChange={(e) => setVoucherValue(e.target.value)}
+                    placeholder="0"
+                    min="1"
+                    className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-xl text-lg font-bold focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    autoFocus
+                  />
+                </div>
+
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Notas (opcional)..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm mb-4 resize-none h-16 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                />
+
+                <button
+                  onClick={handleVoucher}
+                  disabled={resolving || !voucherValue || Number(voucherValue) <= 0}
+                  className="w-full py-3 bg-purple-500 text-white rounded-xl text-sm font-bold active:bg-purple-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+                  </svg>
+                  {resolving ? 'Creando...' : `Crear voucher por ${voucherValue ? formatPrice(Number(voucherValue)) : '$0'}`}
+                </button>
+              </div>
+            )}
+
+            {/* Step: Voucher result + WhatsApp */}
+            {modalStep === 'voucher-result' && voucherResult && (
+              <div className="p-5">
+                <div className="text-center mb-4">
+                  <div className="w-14 h-14 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-bold text-green-800">Voucher creado</h3>
+                </div>
+
+                <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 text-center mb-4">
+                  <p className="text-xs text-purple-600 font-medium uppercase tracking-wide mb-1">Código del voucher</p>
+                  <p className="text-2xl font-mono font-bold text-purple-900 tracking-wider">{voucherResult.code}</p>
+                  <p className="text-lg font-bold text-purple-700 mt-1">{formatPrice(voucherResult.value)}</p>
+                </div>
+
+                {voucherResult.phone ? (
+                  <a
+                    href={getWhatsAppUrl()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-3 bg-green-500 text-white rounded-xl text-sm font-bold active:bg-green-600 flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                    </svg>
+                    Enviar por WhatsApp
+                  </a>
+                ) : (
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-center">
+                    <p className="text-sm text-gray-500">Sin número de teléfono disponible</p>
+                    <p className="text-xs text-gray-400 mt-1">Copiá el código y envialo manualmente</p>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="border-t">
               <button
-                onClick={() => { setShowModal(false); setNotes(''); }}
+                onClick={closeModal}
                 disabled={resolving}
                 className="w-full py-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
-                Cancelar
+                {modalStep === 'voucher-result' ? 'Cerrar' : 'Cancelar'}
               </button>
             </div>
           </div>
@@ -300,68 +456,87 @@ function FaltanteCard({ order, onResolve }: { order: OrderData; onResolve: (orde
 function PorEnviarCard({ order }: { order: OrderData }) {
   const resolution = order.session?.faltanteResolution;
   const hasFaltantesResolved = resolution && resolution !== 'pending';
+  const isWaiting = resolution === 'waiting';
 
   return (
-    <Link href={`/pedido/${order.id}?from=gestion`} className="block">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-bold text-gray-900">#{order.displayId}</span>
-            {order.session?.packed && (
-              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-500 text-white">
-                Empacado
-              </span>
-            )}
-            {hasFaltantesResolved && (
-              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                resolution === 'voucher' ? 'bg-purple-500 text-white' : 'bg-yellow-500 text-white'
-              }`}>
-                {resolution === 'voucher' ? 'Voucher' : 'Esperando stock'}
-              </span>
-            )}
-          </div>
-          <span className="text-lg font-bold text-green-600">{formatPrice(order.total)}</span>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
+        <div className="flex items-center gap-2">
+          <span className="text-lg font-bold text-gray-900">#{order.displayId}</span>
+          {order.session?.packed && (
+            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-500 text-white">
+              Empacado
+            </span>
+          )}
+          {hasFaltantesResolved && (
+            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+              resolution === 'voucher' ? 'bg-purple-500 text-white' :
+              resolution === 'resolved' ? 'bg-green-500 text-white' :
+              'bg-yellow-500 text-white'
+            }`}>
+              {resolution === 'voucher' ? 'Voucher' :
+               resolution === 'resolved' ? 'Stock recibido' :
+               'Esperando stock'}
+            </span>
+          )}
+        </div>
+        <span className="text-lg font-bold text-green-600">{formatPrice(order.total)}</span>
+      </div>
+
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2 mb-2">
+          <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          <span className="text-sm font-medium text-gray-900 truncate">{order.customerName}</span>
         </div>
 
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-2 mb-2">
-            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        {order.address && (
+          <div className="flex items-start gap-2 mb-2">
+            <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
-            <span className="text-sm font-medium text-gray-900 truncate">{order.customerName}</span>
+            <span className="text-sm text-gray-600 line-clamp-1">{order.address}</span>
           </div>
+        )}
 
-          {order.address && (
-            <div className="flex items-start gap-2 mb-2">
-              <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <span className="text-sm text-gray-600 line-clamp-1">{order.address}</span>
-            </div>
-          )}
+        {order.shippingMethod && (
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
+            </svg>
+            <span className="text-xs text-gray-500 truncate">{order.shippingMethod}</span>
+          </div>
+        )}
 
-          {order.shippingMethod && (
-            <div className="flex items-center gap-2">
-              <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
-              </svg>
-              <span className="text-xs text-gray-500 truncate">{order.shippingMethod}</span>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between pt-2 mt-2 border-t border-gray-100">
-            <span className="text-xs text-gray-500">{formatDate(order.createdAt)}</span>
-            <div className="flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-full">
+        <div className="flex items-center justify-between pt-2 mt-2 border-t border-gray-100">
+          <span className="text-xs text-gray-500">{formatDate(order.createdAt)}</span>
+          <div className="flex items-center gap-2">
+            {isWaiting && (
+              <Link
+                href={`/gestion/recibir/${order.id}`}
+                className="px-3 py-1 bg-yellow-500 text-white rounded-full text-xs font-bold active:bg-yellow-600 flex items-center gap-1"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                </svg>
+                Recibir
+              </Link>
+            )}
+            <Link
+              href={`/pedido/${order.id}?from=gestion`}
+              className="flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-full"
+            >
               <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
               </svg>
               <span className="text-sm font-bold text-blue-600">{order.itemCount}</span>
-            </div>
+            </Link>
           </div>
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -638,7 +813,7 @@ export default function GestionPage() {
                   case 'preparados':
                     return <PreparadoCard key={order.id} order={order} />;
                   case 'faltantes':
-                    return <FaltanteCard key={order.id} order={order} onResolve={handleResolveFaltante} />;
+                    return <FaltanteCard key={order.id} order={order} onResolve={handleResolveFaltante} onRefresh={() => fetchData(activeTab)} />;
                   case 'por-enviar':
                     return <PorEnviarCard key={order.id} order={order} />;
                   case 'enviados':

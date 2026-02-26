@@ -36,6 +36,7 @@ export interface IPickingItem {
   quantityRequired: number;
   quantityPicked: number;
   quantityMissing?: number;
+  quantityReceived?: number; // Cantidad recibida de faltantes
   pickedAt?: Date;
   scanMethod?: 'barcode' | 'manual' | 'sku';
 }
@@ -81,6 +82,7 @@ const PickingItemSchema = new Schema<IPickingItem>(
     quantityRequired: { type: Number, required: true },
     quantityPicked: { type: Number, default: 0 },
     quantityMissing: { type: Number, default: 0 },
+    quantityReceived: { type: Number, default: 0 },
     pickedAt: { type: Date },
     scanMethod: { type: String, enum: ['barcode', 'manual', 'sku'] },
   },
