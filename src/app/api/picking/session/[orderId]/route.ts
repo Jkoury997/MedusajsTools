@@ -7,15 +7,21 @@ interface RouteParams {
 }
 
 // GET /api/picking/session/:orderId - Estado del picking
+// ?includeCompleted=true para incluir sesiones completadas
 export async function GET(req: NextRequest, { params }: RouteParams) {
   try {
     await connectDB();
     const { orderId } = await params;
+    const includeCompleted = req.nextUrl.searchParams.get('includeCompleted') === 'true';
 
-    const session = await PickingSession.findOne({
-      orderId,
-      status: 'in_progress',
-    });
+    const query: Record<string, any> = { orderId };
+    if (includeCompleted) {
+      query.status = { $in: ['in_progress', 'completed'] };
+    } else {
+      query.status = 'in_progress';
+    }
+
+    const session = await PickingSession.findOne(query).sort({ startedAt: -1 });
 
     if (!session) {
       return NextResponse.json(
