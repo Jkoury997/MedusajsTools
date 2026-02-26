@@ -33,6 +33,14 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // No permitir empaquetar si hay faltantes sin resolver
+    if (session.totalMissing > 0 && session.faltanteResolution && session.faltanteResolution !== 'resolved') {
+      return NextResponse.json(
+        { success: false, error: 'No se puede empaquetar: hay faltantes pendientes de resolver' },
+        { status: 400 }
+      );
+    }
+
     // Obtener nombre del usuario que empaqueta
     let packedByName = session.userName;
     if (userId) {
