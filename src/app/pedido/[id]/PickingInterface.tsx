@@ -792,13 +792,31 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
 
         {/* Botón Listo para Enviar */}
         {packed || completionResult.packed ? (
-          <div className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-4 text-center">
-            <div className="flex items-center justify-center gap-2">
-              <svg className="w-6 h-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-              </svg>
-              <span className="text-indigo-800 font-bold text-lg">Listo para enviar</span>
+          <div className="space-y-3">
+            <div className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-4 text-center">
+              <div className="flex items-center justify-center gap-2">
+                <svg className="w-6 h-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                </svg>
+                <span className="text-indigo-800 font-bold text-lg">Listo para enviar</span>
+              </div>
             </div>
+            <button
+              onClick={() => {
+                const backUrl = new URLSearchParams(window.location.search).get('from');
+                if (backUrl === 'gestion') {
+                  window.location.href = '/gestion';
+                } else {
+                  window.location.href = backUrl ? `/?estado=${backUrl}` : '/';
+                }
+              }}
+              className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Volver a pedidos
+            </button>
           </div>
         ) : (
           <button
