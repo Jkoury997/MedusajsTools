@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 
-type TabId = 'por-preparar' | 'preparados' | 'faltantes' | 'por-enviar' | 'enviados';
+type TabId = 'por-preparar' | 'faltantes' | 'por-enviar' | 'enviados';
 
 interface MissingItem {
   lineItemId: string;
@@ -78,16 +78,6 @@ const tabs: TabConfig[] = [
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-      </svg>
-    ),
-  },
-  {
-    id: 'preparados',
-    label: 'Preparado',
-    color: 'green',
-    icon: (
-      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
       </svg>
     ),
   },
@@ -243,51 +233,6 @@ function PorPrepararCard({ order }: { order: OrderData }) {
               <span className="text-sm font-bold text-blue-600">{order.itemCount}</span>
             </div>
           </div>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function PreparadoCard({ order }: { order: OrderData }) {
-  const hasMissing = (order.session?.totalMissing || 0) > 0;
-
-  return (
-    <Link href={`/pedido/${order.id}?from=gestion`} className="block">
-      <div className={`bg-white rounded-xl shadow-sm border overflow-hidden ${
-        hasMissing ? 'border-orange-300' : 'border-gray-100'
-      }`}>
-        <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-bold text-gray-900">#{order.displayId}</span>
-            {hasMissing && (
-              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-500 text-white">
-                Con faltantes
-              </span>
-            )}
-          </div>
-          <span className="text-lg font-bold text-green-600">{formatPrice(order.total)}</span>
-        </div>
-
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-2 mb-2">
-            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-            <span className="text-sm font-medium text-gray-900 truncate">{order.customerName}</span>
-          </div>
-
-          {order.session && (
-            <div className="flex items-center gap-3 text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
-              <span>Armó: {order.session.userName}</span>
-              {order.session.durationSeconds && (
-                <span>{formatDuration(order.session.durationSeconds)}</span>
-              )}
-              <span className="ml-auto font-bold text-green-600">
-                {order.session.totalPicked}/{order.session.totalRequired}
-              </span>
-            </div>
-          )}
         </div>
       </div>
     </Link>
@@ -586,10 +531,33 @@ function FaltanteCard({ order, onResolve, onRefresh }: { order: OrderData; onRes
   );
 }
 
-function PorEnviarCard({ order }: { order: OrderData }) {
+function PorEnviarCard({ order, onRefresh }: { order: OrderData; onRefresh: () => void }) {
+  const [shipping, setShipping] = useState(false);
   const resolution = order.session?.faltanteResolution;
-  const hasFaltantesResolved = resolution && resolution !== 'pending';
-  const isWaiting = resolution === 'waiting';
+  const hasFaltantesResolved = resolution && !['pending', 'waiting'].includes(resolution);
+
+  async function handleShip() {
+    if (shipping) return;
+    if (!confirm(`Marcar pedido #${order.displayId} como enviado?`)) return;
+    setShipping(true);
+    try {
+      const res = await fetch('/api/gestion/ship', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: order.id, orderDisplayId: order.displayId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        onRefresh();
+      } else {
+        alert(data.error || 'Error al enviar');
+      }
+    } catch {
+      alert('Error de conexión');
+    } finally {
+      setShipping(false);
+    }
+  }
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -603,13 +571,9 @@ function PorEnviarCard({ order }: { order: OrderData }) {
           )}
           {hasFaltantesResolved && (
             <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-              resolution === 'voucher' ? 'bg-purple-500 text-white' :
-              resolution === 'resolved' ? 'bg-green-500 text-white' :
-              'bg-yellow-500 text-white'
+              resolution === 'voucher' ? 'bg-purple-500 text-white' : 'bg-green-500 text-white'
             }`}>
-              {resolution === 'voucher' ? 'Voucher' :
-               resolution === 'resolved' ? 'Stock recibido' :
-               'Esperando stock'}
+              {resolution === 'voucher' ? 'Voucher' : 'Stock recibido'}
             </span>
           )}
         </div>
@@ -643,49 +607,79 @@ function PorEnviarCard({ order }: { order: OrderData }) {
           </div>
         )}
 
-        <div className="flex items-center justify-between pt-2 mt-2 border-t border-gray-100">
-          <span className="text-xs text-gray-500">{formatDate(order.createdAt)}</span>
-          <div className="flex items-center gap-2">
-            {isWaiting && (
-              <Link
-                href={`/gestion/recibir/${order.id}`}
-                className="px-3 py-1 bg-yellow-500 text-white rounded-full text-xs font-bold active:bg-yellow-600 flex items-center gap-1"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+        {/* Marcar como enviado */}
+        <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100">
+          <button
+            onClick={handleShip}
+            disabled={shipping}
+            className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold active:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-1.5"
+          >
+            {shipping ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                Recibir
-              </Link>
+                Enviando...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
+                </svg>
+                Marcar Enviado
+              </>
             )}
-            <Link
-              href={`/pedido/${order.id}?from=gestion`}
-              className="flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-full"
-            >
-              <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-              </svg>
-              <span className="text-sm font-bold text-blue-600">{order.itemCount}</span>
-            </Link>
-          </div>
+          </button>
+          <Link
+            href={`/pedido/${order.id}?from=gestion`}
+            className="px-3 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium active:bg-gray-200 flex items-center gap-1"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            Ver
+          </Link>
         </div>
       </div>
     </div>
   );
 }
 
-function EnviadoCard({ order }: { order: OrderData }) {
-  const [showLogs, setShowLogs] = useState(false);
-  const isDelivered = order.fulfillmentStatus === 'delivered';
+function EnviadoCard({ order, onRefresh }: { order: OrderData; onRefresh: () => void }) {
+  const [delivering, setDelivering] = useState(false);
+
+  async function handleDeliver() {
+    if (delivering) return;
+    if (!confirm(`Marcar pedido #${order.displayId} como entregado?`)) return;
+    setDelivering(true);
+    try {
+      const res = await fetch('/api/gestion/deliver', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: order.id, orderDisplayId: order.displayId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        onRefresh();
+      } else {
+        alert(data.error || 'Error al marcar como entregado');
+      }
+    } catch {
+      alert('Error de conexión');
+    } finally {
+      setDelivering(false);
+    }
+  }
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
+      <div className="flex items-center justify-between px-4 py-3 bg-blue-50 border-b border-blue-200">
         <div className="flex items-center gap-2">
           <span className="text-lg font-bold text-gray-900">#{order.displayId}</span>
-          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-            isDelivered ? 'bg-purple-600 text-white' : 'bg-blue-600 text-white'
-          }`}>
-            {isDelivered ? 'Entregado' : 'Enviado'}
+          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-600 text-white">
+            Enviado
           </span>
         </div>
         <span className="text-lg font-bold text-green-600">{formatPrice(order.total)}</span>
@@ -709,62 +703,50 @@ function EnviadoCard({ order }: { order: OrderData }) {
           </div>
         )}
 
-        {/* Stats summary */}
-        {order.session && (
-          <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-gray-100">
-            <div className="text-center">
-              <p className="text-xs text-gray-500">Items</p>
-              <p className="text-sm font-bold text-gray-900">{order.session.totalPicked}/{order.session.totalRequired}</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-gray-500">Tiempo</p>
-              <p className="text-sm font-bold text-gray-900">
-                {order.session.durationSeconds ? formatDuration(order.session.durationSeconds) : '-'}
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-gray-500">Picker</p>
-              <p className="text-sm font-bold text-gray-900 truncate">{order.session.userName}</p>
-            </div>
+        {order.shippingMethod && (
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
+            </svg>
+            <span className="text-xs text-gray-500 truncate">{order.shippingMethod}</span>
           </div>
         )}
 
-        {/* Actions */}
-        <div className="flex gap-2 mt-3">
+        {/* Marcar como entregado */}
+        <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100">
+          <button
+            onClick={handleDeliver}
+            disabled={delivering}
+            className="flex-1 py-2.5 bg-green-600 text-white rounded-xl text-sm font-bold active:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-1.5"
+          >
+            {delivering ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Marcando...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Marcar Entregado
+              </>
+            )}
+          </button>
           <Link
             href={`/pedido/${order.id}?from=gestion`}
-            className="flex-1 py-2 bg-blue-500 text-white rounded-xl text-sm font-bold text-center active:bg-blue-600"
+            className="px-3 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium active:bg-gray-200 flex items-center gap-1"
           >
-            Ver pedido
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            Ver
           </Link>
-          <button
-            onClick={() => setShowLogs(!showLogs)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium ${
-              showLogs ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 active:bg-gray-200'
-            }`}
-          >
-            Logs
-          </button>
         </div>
-
-        {/* Audit logs */}
-        {showLogs && order.logs && order.logs.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-gray-100 space-y-1.5 max-h-48 overflow-y-auto">
-            {order.logs.map((log) => (
-              <div key={log._id} className="flex items-start gap-2 text-xs">
-                <span className="text-gray-400 flex-shrink-0 w-24">{formatDate(log.createdAt)}</span>
-                <span className="font-medium text-gray-700">{log.userName}</span>
-                <span className="text-gray-500 truncate">{log.details || log.action}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {showLogs && (!order.logs || order.logs.length === 0) && (
-          <div className="mt-3 pt-3 border-t border-gray-100 text-center text-xs text-gray-400 py-2">
-            Sin registros de auditoría
-          </div>
-        )}
       </div>
     </div>
   );
@@ -773,7 +755,6 @@ function EnviadoCard({ order }: { order: OrderData }) {
 function EmptyState({ tab }: { tab: TabId }) {
   const messages: Record<TabId, { title: string; subtitle: string }> = {
     'por-preparar': { title: 'Todo preparado', subtitle: 'No hay pedidos pendientes de preparar' },
-    preparados: { title: 'No hay pedidos preparados', subtitle: 'Los pedidos aparecerán aquí cuando se complete el picking' },
     faltantes: { title: 'Sin faltantes pendientes', subtitle: 'No hay pedidos con artículos faltantes por resolver' },
     'por-enviar': { title: 'Nada por enviar', subtitle: 'Los pedidos listos aparecerán aquí' },
     enviados: { title: 'Sin envíos', subtitle: 'Los pedidos enviados aparecerán aquí' },
@@ -858,7 +839,6 @@ export default function GestionPage() {
 
   const tabTitles: Record<TabId, string> = {
     'por-preparar': 'Por Preparar',
-    preparados: 'Pedidos Preparados',
     faltantes: 'Pedidos con Faltantes',
     'por-enviar': 'Por Enviar',
     enviados: 'Enviados',
@@ -956,14 +936,12 @@ export default function GestionPage() {
                 switch (activeTab) {
                   case 'por-preparar':
                     return <PorPrepararCard key={order.id} order={order} />;
-                  case 'preparados':
-                    return <PreparadoCard key={order.id} order={order} />;
                   case 'faltantes':
                     return <FaltanteCard key={order.id} order={order} onResolve={handleResolveFaltante} onRefresh={() => fetchData(activeTab)} />;
                   case 'por-enviar':
-                    return <PorEnviarCard key={order.id} order={order} />;
+                    return <PorEnviarCard key={order.id} order={order} onRefresh={() => fetchData(activeTab)} />;
                   case 'enviados':
-                    return <EnviadoCard key={order.id} order={order} />;
+                    return <EnviadoCard key={order.id} order={order} onRefresh={() => fetchData(activeTab)} />;
                   default:
                     return null;
                 }

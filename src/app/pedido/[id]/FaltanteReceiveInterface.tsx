@@ -80,6 +80,7 @@ export default function FaltanteReceiveInterface({ orderId, orderDisplayId, orde
   const [loading, setLoading] = useState(true);
   const [missingItems, setMissingItems] = useState<MissingItem[]>([]);
   const [allReceived, setAllReceived] = useState(false);
+  const [shouldShow, setShouldShow] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState('');
   const [scanning, setScanning] = useState(false);
   const [scanMessage, setScanMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -94,11 +95,17 @@ export default function FaltanteReceiveInterface({ orderId, orderDisplayId, orde
         const res = await fetch(`/api/gestion/faltantes/receive?orderId=${orderId}`);
         const data = await res.json();
         if (data.success) {
-          setMissingItems(data.missingItems || []);
-          const allDone = (data.missingItems || []).every(
-            (i: MissingItem) => i.quantityReceived >= i.quantityMissing
-          );
-          setAllReceived(allDone);
+          const items = data.missingItems || [];
+          // Solo mostrar si hay faltantes y el estado es waiting o pending
+          const resolution = data.faltanteResolution;
+          if (items.length > 0 && ['pending', 'waiting'].includes(resolution)) {
+            setShouldShow(true);
+            setMissingItems(items);
+            const allDone = items.every(
+              (i: MissingItem) => i.quantityReceived >= i.quantityMissing
+            );
+            setAllReceived(allDone);
+          }
         }
       } catch {
         // Error silencioso
@@ -175,7 +182,7 @@ export default function FaltanteReceiveInterface({ orderId, orderDisplayId, orde
     );
   }
 
-  if (missingItems.length === 0) return null;
+  if (!shouldShow || missingItems.length === 0) return null;
 
   const totalMissing = missingItems.reduce((s, i) => s + i.quantityMissing, 0);
   const totalReceived = missingItems.reduce((s, i) => s + i.quantityReceived, 0);

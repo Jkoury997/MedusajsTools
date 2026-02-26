@@ -368,8 +368,8 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
   const { id } = await params;
   const { from } = await searchParams;
 
-  // Construir URL de retorno con el estado
-  const backUrl = from ? `/?estado=${from}` : '/';
+  // Construir URL de retorno
+  const backUrl = '/gestion';
 
   let order: Order | null = null;
   let error: string | null = null;

@@ -104,13 +104,6 @@ export async function GET(req: NextRequest) {
           }
           break;
 
-        case 'preparados':
-          // Pedidos que están fulfilled (preparados) - incluye con y sin faltantes
-          if (fulfillmentStatus === 'fulfilled' && completedSession) {
-            results.push(orderData);
-          }
-          break;
-
         case 'faltantes':
           // Pedidos con faltantes no resueltos (pending o esperando mercadería)
           if (completedSession && completedSession.totalMissing > 0 && ['pending', 'waiting'].includes(completedSession.faltanteResolution)) {
@@ -129,14 +122,8 @@ export async function GET(req: NextRequest) {
           break;
 
         case 'enviados':
-          // Pedidos enviados o entregados
-          if (['shipped', 'partially_shipped', 'delivered'].includes(fulfillmentStatus)) {
-            // Agregar logs de auditoría para este pedido
-            const logs = await AuditLog.find({ orderId: order.id })
-              .sort({ createdAt: -1 })
-              .limit(20)
-              .lean();
-            orderData.logs = logs;
+          // Pedidos enviados (NO entregados)
+          if (['shipped', 'partially_shipped'].includes(fulfillmentStatus)) {
             results.push(orderData);
           }
           break;
@@ -151,7 +138,7 @@ export async function GET(req: NextRequest) {
     });
 
     // Contar para badges
-    const counts: Record<string, number> = { 'por-preparar': 0, preparados: 0, faltantes: 0, 'por-enviar': 0, enviados: 0 };
+    const counts: Record<string, number> = { 'por-preparar': 0, faltantes: 0, 'por-enviar': 0, enviados: 0 };
     for (const order of allOrders) {
       const completedSession = completedSessionMap.get(order.id);
       const fs = order.fulfillment_status || 'not_fulfilled';
@@ -160,7 +147,6 @@ export async function GET(req: NextRequest) {
         counts['por-preparar']++;
       }
       if (fs === 'fulfilled' && completedSession) {
-        counts.preparados++;
         const hasUnresolvedFaltantes = completedSession.totalMissing > 0 && ['pending', 'waiting'].includes(completedSession.faltanteResolution);
         if (hasUnresolvedFaltantes) {
           counts.faltantes++;
@@ -168,7 +154,7 @@ export async function GET(req: NextRequest) {
           counts['por-enviar']++;
         }
       }
-      if (['shipped', 'partially_shipped', 'delivered'].includes(fs)) {
+      if (['shipped', 'partially_shipped'].includes(fs)) {
         counts.enviados++;
       }
     }
