@@ -45,11 +45,17 @@ export async function POST(req: NextRequest) {
     for (const fulfillment of fulfillments) {
       if (fulfillment.shipped_at) continue;
 
+      // Medusa v2 requiere items en el body del shipment
+      const shipmentItems = (fulfillment.items || []).map((item: any) => ({
+        id: item.id,
+        quantity: item.quantity,
+      }));
+
       await medusaRequest(
         `/admin/orders/${orderId}/fulfillments/${fulfillment.id}/shipments`,
         {
           method: 'POST',
-          body: {},
+          body: { items: shipmentItems },
         }
       );
     }

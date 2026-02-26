@@ -88,58 +88,62 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     });
 
     // PASO 2: Crear fulfillment en Medusa
+    // Si hay faltantes, NO crear fulfillment ahora — se crea uno solo cuando se reciba todo
     let fulfillmentCreated = false;
     let fulfillmentError = '';
 
-    try {
-      // Obtener el pedido de Medusa para tener los datos de items
-      const orderData = await medusaRequest<{ order: any }>(
-        `/admin/orders/${orderId}?fields=+items.*,+shipping_methods.*`
-      );
+    if (!hasMissing) {
+      try {
+        // Obtener el pedido de Medusa para tener los datos de items
+        const orderData = await medusaRequest<{ order: any }>(
+          `/admin/orders/${orderId}?fields=+items.*,+shipping_methods.*`
+        );
 
-      const order = orderData.order;
+        const order = orderData.order;
 
-      // Crear fulfillment en Medusa - solo items pickeados (con cantidad real pickeada)
-      // Si hay faltantes, enviar solo la cantidad que se pickeó
-      const fulfillmentItems = order.items
-        .map((item: any) => {
-          const sessionItem = session.items.find(si => si.lineItemId === item.id);
-          const pickedQty = sessionItem ? sessionItem.quantityPicked : item.quantity;
-          return { id: item.id, quantity: pickedQty };
-        })
-        .filter((item: any) => item.quantity > 0);
+        // Crear fulfillment con todos los items (no hay faltantes)
+        const fulfillmentItems = order.items
+          .map((item: any) => {
+            const sessionItem = session.items.find(si => si.lineItemId === item.id);
+            const pickedQty = sessionItem ? sessionItem.quantityPicked : item.quantity;
+            return { id: item.id, quantity: pickedQty };
+          })
+          .filter((item: any) => item.quantity > 0);
 
-      // MedusaJS v2 endpoint: POST /admin/orders/:id/fulfillments (plural)
-      await medusaRequest(`/admin/orders/${orderId}/fulfillments`, {
-        method: 'POST',
-        body: {
-          items: fulfillmentItems,
-        },
-      });
+        // MedusaJS v2 endpoint: POST /admin/orders/:id/fulfillments (plural)
+        await medusaRequest(`/admin/orders/${orderId}/fulfillments`, {
+          method: 'POST',
+          body: {
+            items: fulfillmentItems,
+          },
+        });
 
-      fulfillmentCreated = true;
+        fulfillmentCreated = true;
 
-      audit({
-        action: 'fulfillment_create',
-        userName: user.name,
-        userId: user._id.toString(),
-        orderId,
-        orderDisplayId: session.orderDisplayId,
-        details: `Fulfillment creado en Medusa para pedido #${session.orderDisplayId}`,
-      });
-    } catch (error) {
-      // Si falla el fulfillment, igual el picking queda completado
-      fulfillmentError = error instanceof Error ? error.message : 'Error al crear fulfillment';
-      console.error('Error creating fulfillment in Medusa:', error);
+        audit({
+          action: 'fulfillment_create',
+          userName: user.name,
+          userId: user._id.toString(),
+          orderId,
+          orderDisplayId: session.orderDisplayId,
+          details: `Fulfillment creado en Medusa para pedido #${session.orderDisplayId}`,
+        });
+      } catch (error) {
+        // Si falla el fulfillment, igual el picking queda completado
+        fulfillmentError = error instanceof Error ? error.message : 'Error al crear fulfillment';
+        console.error('Error creating fulfillment in Medusa:', error);
 
-      audit({
-        action: 'fulfillment_error',
-        userName: user.name,
-        userId: user._id.toString(),
-        orderId,
-        orderDisplayId: session.orderDisplayId,
-        details: `Error fulfillment: ${fulfillmentError}`,
-      });
+        audit({
+          action: 'fulfillment_error',
+          userName: user.name,
+          userId: user._id.toString(),
+          orderId,
+          orderDisplayId: session.orderDisplayId,
+          details: `Error fulfillment: ${fulfillmentError}`,
+        });
+      }
+    } else {
+      console.log(`[complete] Hay ${totalMissing} faltantes, no se crea fulfillment hasta que se reciban`);
     }
 
     // Formatear duración

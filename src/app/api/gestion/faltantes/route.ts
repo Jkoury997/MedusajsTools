@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
 import { PickingSession, audit } from '@/lib/mongodb/models';
+import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
 
 // POST /api/gestion/faltantes - Resolver faltante
 export async function POST(req: NextRequest) {
@@ -35,6 +36,42 @@ export async function POST(req: NextRequest) {
     session.faltanteNotes = notes || '';
     await session.save();
 
+    // Si es voucher o resolved, crear fulfillment solo con lo que se pickeó
+    // (los faltantes no se van a recibir)
+    let fulfillmentCreated = false;
+    if (resolution === 'voucher' || resolution === 'resolved') {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const orderData = await medusaRequest<{ order: any }>(
+          `/admin/orders/${orderId}?fields=+items.*`
+        );
+        const order = orderData.order;
+
+        const fulfillmentItems: { id: string; quantity: number }[] = [];
+        for (const sessionItem of session.items) {
+          if (sessionItem.quantityPicked <= 0) continue;
+          const medusaItem = order.items?.find((i: any) => i.id === sessionItem.lineItemId);
+          if (medusaItem) {
+            fulfillmentItems.push({
+              id: medusaItem.id,
+              quantity: sessionItem.quantityPicked,
+            });
+          }
+        }
+
+        if (fulfillmentItems.length > 0) {
+          await medusaRequest(`/admin/orders/${orderId}/fulfillments`, {
+            method: 'POST',
+            body: { items: fulfillmentItems },
+          });
+          fulfillmentCreated = true;
+          invalidateOrdersCache();
+        }
+      } catch (fulfillError) {
+        console.error('[Faltantes] Error creating fulfillment:', fulfillError);
+      }
+    }
+
     const resolutionLabels: Record<string, string> = {
       voucher: 'Voucher de compensación',
       waiting: 'Esperando mercadería',
@@ -46,8 +83,8 @@ export async function POST(req: NextRequest) {
       userName: session.userName,
       orderId,
       orderDisplayId: session.orderDisplayId,
-      details: `Faltante resuelto: ${resolutionLabels[resolution]}${notes ? ` - ${notes}` : ''}`,
-      metadata: { resolution, notes, totalMissing: session.totalMissing },
+      details: `Faltante resuelto: ${resolutionLabels[resolution]}${notes ? ` - ${notes}` : ''}${fulfillmentCreated ? ' - Fulfillment creado' : ''}`,
+      metadata: { resolution, notes, totalMissing: session.totalMissing, fulfillmentCreated },
     });
 
     return NextResponse.json({

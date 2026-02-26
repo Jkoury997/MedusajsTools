@@ -37,10 +37,17 @@ export async function GET(req: NextRequest) {
       const fulfillmentStatus = order.fulfillment_status || 'not_fulfilled';
 
       // Determinar si el envío es express
-      const shippingName = order.shipping_methods?.[0]?.name || '';
+      const shippingMethod = order.shipping_methods?.[0];
+      const shippingName = shippingMethod?.name || '';
       const isExpress = shippingName.toLowerCase().includes('express') ||
         shippingName.toLowerCase().includes('rápido') ||
         shippingName.toLowerCase().includes('rapido');
+
+      // Detectar si es retiro en tienda
+      const shippingNameLower = shippingName.toLowerCase();
+      const isStorePickup = shippingNameLower.includes('retiro') || shippingNameLower.includes('tienda') || shippingNameLower.includes('pickup') || shippingNameLower.includes('sucursal');
+      const storeData = shippingMethod?.data?.store;
+      const customerPhone = order.shipping_address?.phone || order.customer?.phone || null;
 
       const orderData: Record<string, any> = {
         id: order.id,
@@ -61,6 +68,10 @@ export async function GET(req: NextRequest) {
         shippingMethod: shippingName || null,
         isExpress,
         itemCount: (order.items || []).reduce((sum: number, item: any) => sum + (item.quantity || 0), 0),
+        isStorePickup,
+        customerPhone,
+        storeName: isStorePickup ? (storeData?.name || shippingName || 'Tienda') : null,
+        storeAddress: isStorePickup ? (storeData?.address || '') : null,
         session: completedSession ? {
           totalRequired: completedSession.totalRequired,
           totalPicked: completedSession.totalPicked,
@@ -112,8 +123,8 @@ export async function GET(req: NextRequest) {
           break;
 
         case 'por-enviar':
-          // Pedidos fulfilled, sin faltantes sin resolver, listos para enviar
-          if (fulfillmentStatus === 'fulfilled' && completedSession) {
+          // Pedidos fulfilled o partially_fulfilled (voucher), sin faltantes sin resolver, listos para enviar
+          if (['fulfilled', 'partially_fulfilled'].includes(fulfillmentStatus) && completedSession) {
             const hasUnresolvedFaltantes = completedSession.totalMissing > 0 && ['pending', 'waiting'].includes(completedSession.faltanteResolution);
             if (!hasUnresolvedFaltantes) {
               results.push(orderData);
@@ -146,7 +157,7 @@ export async function GET(req: NextRequest) {
       if (['not_fulfilled', 'partially_fulfilled'].includes(fs) && !completedSession) {
         counts['por-preparar']++;
       }
-      if (fs === 'fulfilled' && completedSession) {
+      if (['fulfilled', 'partially_fulfilled'].includes(fs) && completedSession) {
         const hasUnresolvedFaltantes = completedSession.totalMissing > 0 && ['pending', 'waiting'].includes(completedSession.faltanteResolution);
         if (hasUnresolvedFaltantes) {
           counts.faltantes++;
