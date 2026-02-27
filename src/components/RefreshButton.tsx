@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import LogoutButton from './LogoutButton';
 
 const POLL_INTERVAL = 30000; // 30 segundos
 
@@ -93,6 +94,9 @@ export default function RefreshButton() {
 
   return (
     <div className="flex items-center gap-1">
+      {/* Cerrar sesión */}
+      <LogoutButton />
+
       {/* Link a historial */}
       <Link
         href="/admin/historial"
