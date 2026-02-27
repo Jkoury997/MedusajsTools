@@ -2,9 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const SESSION_SECRET = process.env.SESSION_SECRET || 'pickup-secret-2024';
 const STATS_API_KEY = process.env.STATS_API_KEY || '';
+const STATS_CORS_ORIGIN = process.env.STATS_CORS_ORIGIN || '*';
 
 // Prefijos que usan auth por API key (en vez de cookies)
 const API_KEY_PATHS = ['/api/stats/'];
+
+// Rutas que aceptan Bearer token (para usuarios tienda)
+const STORE_TOKEN_PATHS = [
+  '/api/picking/deliver',
+  '/api/picking/store-orders',
+];
 
 // Rutas públicas que no necesitan autenticación
 const PUBLIC_PATHS = [
@@ -13,8 +20,6 @@ const PUBLIC_PATHS = [
   '/api/picking/login',
   '/api/picking/auth',
   '/api/picking/store-auth',
-  '/api/picking/store-orders',
-  '/api/picking/deliver',
   '/icon.svg',
   '/apple-icon.svg',
   '/favicon.ico',
@@ -76,7 +81,7 @@ export async function middleware(request: NextRequest) {
       return new NextResponse(null, {
         status: 200,
         headers: {
-          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Origin': STATS_CORS_ORIGIN,
           'Access-Control-Allow-Methods': 'GET, OPTIONS',
           'Access-Control-Allow-Headers': 'x-publishable-api-key, Content-Type',
           'Access-Control-Max-Age': '86400',
@@ -94,13 +99,45 @@ export async function middleware(request: NextRequest) {
 
     // API key válida — pasar con CORS headers
     const response = NextResponse.next();
-    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Origin', STATS_CORS_ORIGIN);
     return response;
+  }
+
+  // Auth por Bearer token O cookie para endpoints de tienda (deliver, store-orders)
+  // Acepta Bearer token (tienda) o cookie de sesión (picker/admin)
+  if (STORE_TOKEN_PATHS.some(p => pathname.startsWith(p))) {
+    const authHeader = request.headers.get('authorization');
+    const sessionCookie = request.cookies.get('picking-session');
+
+    // Intentar Bearer token primero (tienda)
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.slice(7);
+      const session = await verifyToken(token);
+      if (session) return NextResponse.next();
+    }
+
+    // Fallback a cookie de sesión (picker/admin)
+    if (sessionCookie?.value) {
+      const session = await verifyToken(sessionCookie.value);
+      if (session) return NextResponse.next();
+    }
+
+    return NextResponse.json(
+      { success: false, error: 'Autenticacion requerida' },
+      { status: 401 }
+    );
   }
 
   // Verificar cookie de sesión
   const sessionCookie = request.cookies.get('picking-session');
   if (!sessionCookie?.value) {
+    // Para rutas de API, devolver 401 en vez de redirect
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { success: false, error: 'No autenticado' },
+        { status: 401 }
+      );
+    }
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('from', pathname);
     return NextResponse.redirect(loginUrl);
@@ -108,6 +145,12 @@ export async function middleware(request: NextRequest) {
 
   const session = await verifyToken(sessionCookie.value);
   if (!session) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { success: false, error: 'Sesion expirada' },
+        { status: 401 }
+      );
+    }
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('from', pathname);
     const response = NextResponse.redirect(loginUrl);

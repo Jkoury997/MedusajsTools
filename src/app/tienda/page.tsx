@@ -8,6 +8,7 @@ interface StoreUser {
   name: string;
   storeId: string;
   storeName: string;
+  token: string; // Bearer token para endpoints protegidos
 }
 
 interface StoreOrder {
@@ -102,7 +103,9 @@ export default function TiendaPage() {
     setLoading(true);
     try {
       // Traer pedidos fulfilled y shipped para filtrar por tienda
-      const res = await fetch('/api/picking/store-orders?' + new URLSearchParams({ storeId: user.storeId }));
+      const res = await fetch('/api/picking/store-orders?' + new URLSearchParams({ storeId: user.storeId }), {
+        headers: { 'Authorization': `Bearer ${user.token}` },
+      });
       const data = await res.json();
       if (data.success) {
         setOrders(data.orders);
@@ -134,11 +137,12 @@ export default function TiendaPage() {
       });
       const data = await res.json();
       if (data.success) {
+        const userWithToken = { ...data.user, token: data.token };
         if (data.requirePinChange) {
-          setPendingUser(data.user);
+          setPendingUser(userWithToken);
           setShowPinChange(true);
         } else {
-          setUser(data.user);
+          setUser(userWithToken);
         }
       } else {
         setAuthError(data.error || 'PIN incorrecto');
@@ -177,7 +181,7 @@ export default function TiendaPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setUser(pendingUser);
+        setUser(pendingUser as StoreUser);
         setShowPinChange(false);
       } else {
         setPinChangeError(data.error || 'Error al cambiar PIN');
@@ -204,7 +208,10 @@ export default function TiendaPage() {
     try {
       const res = await fetch('/api/picking/deliver', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`,
+        },
         body: JSON.stringify({
           orderId: order.id,
           orderDisplayId: order.display_id,

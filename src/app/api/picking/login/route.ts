@@ -1,23 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
 import { PickingUser, audit, hashPin } from '@/lib/mongodb/models';
-import { createHmac } from 'crypto';
+import { createSessionToken, SESSION_DURATION } from '@/lib/auth';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
-const ADMIN_PIN = process.env.ADMIN_PIN || '9999';
-const SESSION_SECRET = process.env.SESSION_SECRET || 'pickup-secret-2024';
-const SESSION_DURATION = 12 * 60 * 60 * 1000; // 12 horas
+const ADMIN_PIN = process.env.ADMIN_PIN;
 
-function createSessionToken(userId: string, role: string): string {
-  const expires = Date.now() + SESSION_DURATION;
-  const data = `${userId}:${role}:${expires}`;
-  // HMAC-SHA256 — compatible con Web Crypto API en middleware
-  const signature = createHmac('sha256', SESSION_SECRET).update(data).digest('hex');
-  return Buffer.from(`${data}:${signature}`).toString('base64');
+if (!ADMIN_PIN) {
+  console.warn('[Security] ADMIN_PIN no configurado en .env. Login admin deshabilitado.');
 }
 
 // POST /api/picking/login - Login con PIN
 export async function POST(req: NextRequest) {
   try {
+    // Rate limiting: 5 intentos por IP cada 15 minutos
+    const ip = getClientIp(req);
+    const rateCheck = checkRateLimit(`login:${ip}`, 5, 15 * 60 * 1000);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { success: false, error: `Demasiados intentos. Reintenta en ${Math.ceil((rateCheck.retryAfterSeconds || 0) / 60)} minutos.` },
+        { status: 429 }
+      );
+    }
+
     await connectDB();
     const { pin } = await req.json();
 
@@ -32,7 +37,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Verificar si es admin
-    if (pin === ADMIN_PIN) {
+    if (ADMIN_PIN && pin === ADMIN_PIN) {
       const token = createSessionToken('admin', 'admin');
       const response = NextResponse.json({ success: true, user: { name: 'Admin', role: 'admin' } });
       response.cookies.set('picking-session', token, {

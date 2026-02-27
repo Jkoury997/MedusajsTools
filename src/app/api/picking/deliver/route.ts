@@ -4,8 +4,6 @@ import { PickingUser, StoreDelivery, audit } from '@/lib/mongodb/models';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
 import { isFactoryPickup } from '@/lib/shipping';
 
-const ADMIN_PIN = process.env.ADMIN_PIN || '9999';
-
 // POST /api/picking/deliver - Marcar pedido como entregado en tienda
 export async function POST(req: NextRequest) {
   try {

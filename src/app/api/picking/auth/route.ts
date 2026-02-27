@@ -1,12 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
 import { PickingUser, hashPin, audit } from '@/lib/mongodb/models';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
-const ADMIN_PIN = process.env.ADMIN_PIN || '9999';
+const ADMIN_PIN = process.env.ADMIN_PIN;
 
 // POST /api/picking/auth - Validar PIN
 export async function POST(req: NextRequest) {
   try {
+    // Rate limiting: 5 intentos por IP cada 15 minutos
+    const ip = getClientIp(req);
+    const rateCheck = checkRateLimit(`auth:${ip}`, 5, 15 * 60 * 1000);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { success: false, error: `Demasiados intentos. Reintenta en ${Math.ceil((rateCheck.retryAfterSeconds || 0) / 60)} minutos.` },
+        { status: 429 }
+      );
+    }
+
     await connectDB();
     const { pin } = await req.json();
 
@@ -18,7 +29,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Admin puede hacer picking también
-    if (pin === ADMIN_PIN) {
+    if (ADMIN_PIN && pin === ADMIN_PIN) {
       return NextResponse.json({
         success: true,
         user: {
