@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import LogoutButton from '@/components/LogoutButton';
 
 type TabId = 'por-preparar' | 'faltantes' | 'por-enviar' | 'enviados';
 
@@ -1065,14 +1066,17 @@ export default function GestionPage() {
               );
             })}
           </div>
-          <button
-            onClick={() => fetchData(activeTab)}
-            className="p-2 text-gray-400 hover:text-gray-600 active:bg-gray-100 rounded-lg flex-shrink-0"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={() => fetchData(activeTab)}
+              className="p-2 text-gray-400 hover:text-gray-600 active:bg-gray-100 rounded-lg"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+            <LogoutButton />
+          </div>
         </div>
 
         {/* Search */}
