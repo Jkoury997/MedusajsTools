@@ -90,17 +90,24 @@ export async function middleware(request: NextRequest) {
     }
 
     const apiKey = request.headers.get('x-publishable-api-key');
-    if (!apiKey || !STATS_API_KEY || apiKey !== STATS_API_KEY) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid API key' },
-        { status: 401 }
-      );
+    if (apiKey && STATS_API_KEY && apiKey === STATS_API_KEY) {
+      // API key válida — pasar con CORS headers (dashboard externo)
+      const response = NextResponse.next();
+      response.headers.set('Access-Control-Allow-Origin', STATS_CORS_ORIGIN);
+      return response;
     }
 
-    // API key válida — pasar con CORS headers
-    const response = NextResponse.next();
-    response.headers.set('Access-Control-Allow-Origin', STATS_CORS_ORIGIN);
-    return response;
+    // Fallback: permitir acceso con sesión activa (admin interno)
+    const sessionCookie = request.cookies.get('picking-session');
+    if (sessionCookie?.value) {
+      const session = await verifyToken(sessionCookie.value);
+      if (session) return NextResponse.next();
+    }
+
+    return NextResponse.json(
+      { success: false, error: 'Invalid API key' },
+      { status: 401 }
+    );
   }
 
   // Auth por Bearer token O cookie para endpoints de tienda (deliver, store-orders)
