@@ -153,13 +153,13 @@ export async function GET(req: NextRequest) {
         variantId: p._id.variantId || null,
         totalMissing: p.totalMissing,
         occurrences: p.occurrences,
-        orderCount: p.orders.length,
+        orderCount: p.orders?.length ?? 0,
       })),
       perPicker: pickerStats.map((p: any) => ({
         userId: p._id.userId,
         userName: p._id.userName,
         totalMissing: p.totalMissing,
-        ordersWithMissing: p.ordersWithMissing.length,
+        ordersWithMissing: p.ordersWithMissing?.length ?? 0,
       })),
       dailyTrend: dailyTrend.map((d: any) => ({
         date: d._id,

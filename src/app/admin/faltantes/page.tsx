@@ -153,7 +153,7 @@ export default function FaltantesPage() {
             </div>
 
             {/* Daily trend */}
-            {stats.dailyTrend.length > 0 && (
+            {stats.dailyTrend?.length > 0 && (
               <div className="bg-white rounded-xl border p-4">
                 <h3 className="text-sm font-bold text-gray-700 mb-3">Tendencia diaria</h3>
                 <div className="flex items-end gap-1 h-24">
@@ -182,7 +182,7 @@ export default function FaltantesPage() {
               <div className="p-4 border-b">
                 <h3 className="text-sm font-bold text-gray-700">Ranking de productos faltantes</h3>
               </div>
-              {stats.productRanking.length === 0 ? (
+              {!stats.productRanking?.length ? (
                 <div className="p-6 text-center text-gray-400 text-sm">
                   Sin faltantes en este periodo
                 </div>
@@ -217,7 +217,7 @@ export default function FaltantesPage() {
             </div>
 
             {/* Per picker */}
-            {stats.perPicker.length > 0 && (
+            {stats.perPicker?.length > 0 && (
               <div className="bg-white rounded-xl border overflow-hidden">
                 <div className="p-4 border-b">
                   <h3 className="text-sm font-bold text-gray-700">Faltantes por picker</h3>
