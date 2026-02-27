@@ -542,6 +542,7 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
         {/* Picking Interface - solo si no hay sesión completada con faltantes pendientes */}
         {!hasCompletedSessionWithFaltantes && (
           <PickingInterface
+            key={order.id}
             orderId={order.id}
             orderDisplayId={order.display_id}
             orderItems={sortedItems}
@@ -552,6 +553,7 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
         {/* Faltante Receive Interface - para pedidos con sesión completada y faltantes en espera */}
         {hasCompletedSessionWithFaltantes && (
           <FaltanteReceiveInterface
+            key={order.id}
             orderId={order.id}
             orderDisplayId={order.display_id}
             orderItems={sortedItems}
