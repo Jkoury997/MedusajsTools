@@ -5,7 +5,18 @@ const STATS_API_KEY = process.env.STATS_API_KEY || '';
 const STATS_CORS_ORIGIN = process.env.STATS_CORS_ORIGIN || '*';
 
 // Prefijos que usan auth por API key (en vez de cookies)
-const API_KEY_PATHS = ['/api/stats/'];
+// Incluye stats, admin, auditoría, usuarios, historial, tiendas y gestión
+// para acceso desde dashboard externo
+const API_KEY_PATHS = [
+  '/api/stats/',
+  '/api/admin/',
+  '/api/picking/audit',
+  '/api/picking/users',
+  '/api/picking/history',
+  '/api/picking/stores',
+  '/api/picking/orders-count',
+  '/api/gestion',
+];
 
 // Rutas que aceptan Bearer token (para usuarios tienda)
 const STORE_TOKEN_PATHS = [
@@ -74,7 +85,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Auth por API key para endpoints de stats (dashboard externo)
+  // Auth por API key para endpoints de admin/stats/gestion (dashboard externo)
   if (API_KEY_PATHS.some(p => pathname.startsWith(p))) {
     // CORS preflight — no requiere API key
     if (request.method === 'OPTIONS') {
@@ -82,7 +93,7 @@ export async function middleware(request: NextRequest) {
         status: 200,
         headers: {
           'Access-Control-Allow-Origin': STATS_CORS_ORIGIN,
-          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
           'Access-Control-Allow-Headers': 'x-publishable-api-key, Content-Type',
           'Access-Control-Max-Age': '86400',
         },
