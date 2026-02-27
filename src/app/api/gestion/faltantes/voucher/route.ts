@@ -37,17 +37,10 @@ export async function POST(req: NextRequest) {
     // Obtener datos del pedido para currency_code
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const orderData = await medusaRequest<{ order: any }>(
-      `/admin/orders/${orderId}?fields=+shipping_address.*,+customer.*`
+      `/admin/orders/${orderId}?fields=currency_code,+shipping_address.*,+customer.*`
     );
     const order = orderData.order;
-    const currencyCode = order.currency_code;
-
-    if (!currencyCode) {
-      return NextResponse.json(
-        { success: false, error: 'El pedido no tiene currency_code' },
-        { status: 400 }
-      );
-    }
+    const currencyCode = order.currency_code || 'ars';
 
     const voucherCode = generateVoucherCode(session.orderDisplayId || 0);
     const roundedValue = Math.round(value);
