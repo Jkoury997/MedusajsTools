@@ -176,6 +176,29 @@ const StoreDeliverySchema = new Schema<IStoreDelivery>(
   { timestamps: true }
 );
 
+// ==================== API KEY ====================
+
+export interface IApiKey extends Document {
+  key: string;          // mk_xxxx...
+  name: string;         // Nombre descriptivo (ej: "Dashboard externo")
+  active: boolean;
+  lastUsedAt?: Date;
+  createdByName: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const ApiKeySchema = new Schema<IApiKey>(
+  {
+    key: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
+    active: { type: Boolean, default: true },
+    lastUsedAt: { type: Date },
+    createdByName: { type: String, required: true },
+  },
+  { timestamps: true }
+);
+
 // ==================== AUDIT LOG ====================
 
 export type AuditAction =
@@ -195,7 +218,9 @@ export type AuditAction =
   | 'user_delete'
   | 'admin_login'
   | 'store_login'
-  | 'login';
+  | 'login'
+  | 'api_key_create'
+  | 'api_key_revoke';
 
 export interface IAuditLog extends Document {
   action: AuditAction;
@@ -269,3 +294,6 @@ export const StoreDelivery: Model<IStoreDelivery> =
 
 export const Store: Model<IStore> =
   mongoose.models.Store || mongoose.model<IStore>('Store', StoreSchema);
+
+export const ApiKey: Model<IApiKey> =
+  mongoose.models.ApiKey || mongoose.model<IApiKey>('ApiKey', ApiKeySchema);
