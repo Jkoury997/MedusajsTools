@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 // === FEEDBACK: Sonido + Vibración ===
 function usePickingFeedback() {
@@ -166,8 +166,7 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [pickError, setPickError] = useState('');
 
-  // Barcode
-  const [barcodeInput, setBarcodeInput] = useState('');
+  // Barcode - use ref instead of state to avoid re-rendering entire item list on each keystroke
   const barcodeRef = useRef<HTMLInputElement>(null);
   const [lastScannedItemId, setLastScannedItemId] = useState<string | null>(null);
   const [lastScannedName, setLastScannedName] = useState<string | null>(null);
@@ -435,7 +434,8 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
   // Barcode scan
   async function handleBarcodeScan(e: React.FormEvent) {
     e.preventDefault();
-    if (!barcodeInput.trim() || actionLoading) return;
+    const barcode = barcodeRef.current?.value?.trim();
+    if (!barcode || actionLoading) return;
     setActionLoading('barcode');
     setPickError('');
 
@@ -443,13 +443,13 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
       const res = await fetch(`/api/picking/session/${orderId}/pick`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ barcode: barcodeInput.trim(), method: 'barcode' }),
+        body: JSON.stringify({ barcode, method: 'barcode' }),
       });
       const data = await res.json();
 
       if (data.success) {
         setSession(prev => prev ? { ...prev, ...data.session } : prev);
-        setBarcodeInput('');
+        if (barcodeRef.current) barcodeRef.current.value = '';
         successFeedback();
         // Highlight the scanned item and show name
         if (data.pickedItem?.lineItemId) {
@@ -465,7 +465,7 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
           setTimeout(() => { setLastScannedItemId(null); setLastScannedName(null); }, 2500);
         }
       } else {
-        setBarcodeInput('');
+        if (barcodeRef.current) barcodeRef.current.value = '';
         setShowWrongArticlePopup(true);
         errorFeedback();
         setTimeout(() => {
@@ -911,8 +911,6 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
               ref={barcodeRef}
               type="text"
               inputMode="none"
-              value={barcodeInput}
-              onChange={(e) => setBarcodeInput(e.target.value)}
               placeholder="Escanear código de barras..."
               autoFocus
               className="w-full pl-10 pr-3 py-3.5 bg-white border-2 border-gray-300 rounded-xl text-base font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -920,7 +918,7 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
           </div>
           <button
             type="submit"
-            disabled={!barcodeInput.trim() || !!actionLoading}
+            disabled={!!actionLoading}
             className="px-5 py-3.5 bg-blue-500 text-white rounded-xl text-sm font-bold disabled:opacity-50 active:bg-blue-600"
           >
             OK
