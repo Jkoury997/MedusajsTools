@@ -85,16 +85,22 @@ export async function GET(req: NextRequest) {
           faltanteResolvedAt: completedSession.faltanteResolvedAt,
           faltanteNotes: completedSession.faltanteNotes,
           missingItems: completedSession.items
-            ?.filter((i: any) => (i.quantityMissing || 0) > 0)
+            ?.filter((i: any) => {
+              const missing = i.quantityMissing || 0;
+              const received = i.quantityReceived || 0;
+              // Solo mostrar items que aún no fueron recibidos completamente
+              return missing > 0 && received < missing;
+            })
             .map((i: any) => {
               const medusaItem = order.items?.find((oi: any) => oi.id === i.lineItemId);
+              const remaining = (i.quantityMissing || 0) - (i.quantityReceived || 0);
               return {
                 lineItemId: i.lineItemId,
                 sku: i.sku,
                 barcode: i.barcode,
                 quantityRequired: i.quantityRequired,
                 quantityPicked: i.quantityPicked,
-                quantityMissing: i.quantityMissing,
+                quantityMissing: remaining,
                 unitPrice: medusaItem?.unit_price || 0,
               };
             }) || [],
