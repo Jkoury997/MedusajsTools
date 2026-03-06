@@ -201,8 +201,8 @@ async function fetchAllOrders(): Promise<void> {
   daysAgo.setHours(0, 0, 0, 0);
   const dateFilter = daysAgo.toISOString();
 
-  // Campos reducidos: solo lo que se usa en la app (sin variant.* ni variant.product.*)
-  const fields = '+shipping_address.*,+customer.*,+items.*,+shipping_methods.*';
+  // Campos reducidos: sin variant.product.* (lo más pesado)
+  const fields = '+shipping_address.*,+customer.*,+items.*,+items.variant.*,+shipping_methods.*';
 
   while (hasMore) {
     const response = await medusaRequest<{ orders: unknown[]; count: number; offset: number; limit: number }>(
