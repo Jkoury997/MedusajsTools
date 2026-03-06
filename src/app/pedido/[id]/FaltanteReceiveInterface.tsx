@@ -436,7 +436,7 @@ export default function FaltanteReceiveInterface({ orderId, orderDisplayId, orde
                       `${mi.quantityReceived}/${mi.quantityMissing}`
                     )}
                   </div>
-                  {manualMode && !isDone && !mi.barcode && (
+                  {!isDone && !mi.barcode && (
                     <button
                       onClick={() => handleManualReceive(mi.lineItemId)}
                       disabled={receivingItemId === mi.lineItemId}
