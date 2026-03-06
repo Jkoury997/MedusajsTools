@@ -14,7 +14,7 @@ export const revalidate = 0;
 
 interface PageProps {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ from?: string }>;
+  searchParams: Promise<{ from?: string; type?: string }>;
 }
 
 function formatDate(dateString: string): string {
@@ -368,7 +368,7 @@ function CustomerInfo({ order }: { order: Order }) {
 
 export default async function OrderDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params;
-  const { from } = await searchParams;
+  const { from, type } = await searchParams;
 
   // Construir URL de retorno
   const backUrl = '/gestion';
@@ -557,6 +557,7 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
             orderId={order.id}
             orderDisplayId={order.display_id}
             orderItems={sortedItems}
+            manualMode={type === 'manual'}
           />
         )}
       </div>
