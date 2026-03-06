@@ -22,7 +22,7 @@ body {
 @media print {
   @page {
     size: A4;
-    margin: 1.5cm;
+    margin: 2cm 1.5cm 1.5cm 1.5cm;
   }
 
   body {
