@@ -272,8 +272,8 @@ function CustomerInfo({ order }: { order: Order }) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
             <span className="text-sm font-medium text-gray-900 truncate">{customerName}</span>
-            {order.shipping_address?.phone && (
-              <span className="text-xs text-gray-500 hidden sm:inline">· {order.shipping_address.phone}</span>
+            {(order.shipping_address?.phone || order.customer?.phone) && (
+              <span className="text-xs text-gray-500 hidden sm:inline">· {order.shipping_address?.phone || order.customer?.phone}</span>
             )}
           </div>
           <svg className="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -347,7 +347,7 @@ function CustomerInfo({ order }: { order: Order }) {
         <div className="flex justify-between">
           <div>
             <strong>{customerName}</strong>
-            {order.shipping_address?.phone && <span className="ml-2">Tel: {order.shipping_address.phone}</span>}
+            {(order.shipping_address?.phone || order.customer?.phone) && <span className="ml-2">Tel: {order.shipping_address?.phone || order.customer?.phone}</span>}
           </div>
           {order.shipping_address?.metadata?.dni && <span>DNI: {order.shipping_address.metadata.dni}</span>}
         </div>
@@ -527,7 +527,7 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
               <StoreLabel
                 orderDisplayId={order.display_id}
                 customerName={getCustomerName(order)}
-                customerPhone={order.shipping_address?.phone || null}
+                customerPhone={order.shipping_address?.phone || order.customer?.phone || null}
                 storeName={storeInfo.storeName}
                 storeAddress={storeInfo.storeAddress}
               />
