@@ -195,11 +195,11 @@ async function fetchAllOrders(): Promise<void> {
   console.log(`[fetchAllOrders] 📋 Cargando todos los pedidos de Medusa...`);
   const startTime = Date.now();
 
-  // Solo traer pedidos de los últimos 7 días
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  sevenDaysAgo.setHours(0, 0, 0, 0);
-  const dateFilter = sevenDaysAgo.toISOString();
+  // Solo traer pedidos de los últimos 15 días
+  const daysAgo = new Date();
+  daysAgo.setDate(daysAgo.getDate() - 15);
+  daysAgo.setHours(0, 0, 0, 0);
+  const dateFilter = daysAgo.toISOString();
 
   // Campos reducidos: solo lo que se usa en la app (sin variant.* ni variant.product.*)
   const fields = '+shipping_address.*,+customer.*,+items.*,+shipping_methods.*';
@@ -229,7 +229,7 @@ async function fetchAllOrders(): Promise<void> {
     return paymentStatus === 'captured' && orderStatus !== 'canceled' && orderStatus !== 'archived';
   });
 
-  console.log(`[fetchAllOrders] ✅ ${paidOrders.length} pedidos pagados de ${allOrders.length} totales (últimos 7 días) - ${Date.now() - startTime}ms`);
+  console.log(`[fetchAllOrders] ✅ ${paidOrders.length} pedidos pagados de ${allOrders.length} totales (últimos 15 días) - ${Date.now() - startTime}ms`);
 
   allPaidOrdersCache = {
     orders: paidOrders,
