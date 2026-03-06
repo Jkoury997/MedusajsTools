@@ -361,6 +361,11 @@ function CustomerInfo({ order }: { order: Order }) {
             {' - CP '}{order.shipping_address.postal_code}
           </div>
         )}
+        {order.shipping_methods?.[0]?.name && (
+          <div className="mt-1 pt-1 border-t border-gray-300">
+            <strong>Envío:</strong> {order.shipping_methods[0].name}
+          </div>
+        )}
       </div>
     </>
   );

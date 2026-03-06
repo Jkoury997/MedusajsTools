@@ -564,6 +564,7 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
   async function handlePack() {
     if (packing || packed) return;
     setPacking(true);
+    setPickError('');
     try {
       const res = await fetch(`/api/picking/session/${orderId}/pack`, {
         method: 'POST',
@@ -574,9 +575,13 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
       if (data.success) {
         setPacked(true);
         successFeedback();
+      } else {
+        setPickError(data.error || 'Error al empaquetar');
+        errorFeedback();
       }
     } catch {
-      // Silenciar
+      setPickError('Error de conexión al empaquetar');
+      errorFeedback();
     } finally {
       setPacking(false);
     }
@@ -835,28 +840,35 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
             </button>
           </div>
         ) : (
-          <button
-            onClick={handlePack}
-            disabled={packing}
-            className="w-full bg-indigo-600 text-white py-4 rounded-xl text-lg font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-colors shadow-lg disabled:opacity-50"
-          >
-            {packing ? (
-              <>
-                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Marcando...
-              </>
-            ) : (
-              <>
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                </svg>
-                Listo para Enviar
-              </>
+          <div className="space-y-2">
+            <button
+              onClick={handlePack}
+              disabled={packing}
+              className="w-full bg-indigo-600 text-white py-4 rounded-xl text-lg font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-colors shadow-lg disabled:opacity-50"
+            >
+              {packing ? (
+                <>
+                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Marcando...
+                </>
+              ) : (
+                <>
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                  </svg>
+                  Listo para Enviar
+                </>
+              )}
+            </button>
+            {pickError && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+                <p className="text-sm text-red-800 font-medium">{pickError}</p>
+              </div>
             )}
-          </button>
+          </div>
         )}
       </div>
     );
