@@ -575,6 +575,10 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
       if (data.success) {
         setPacked(true);
         successFeedback();
+        // Redirect to management page after brief feedback
+        setTimeout(() => {
+          window.location.href = '/gestion';
+        }, 1500);
       } else {
         setPickError(data.error || 'Error al empaquetar');
         errorFeedback();
