@@ -64,6 +64,7 @@ interface OrderData {
   customerPhone: string | null;
   storeName: string | null;
   storeAddress: string | null;
+  isCashPayment: boolean;
   session: SessionInfo | null;
   inProgressSession: InProgressSession | null;
   logs?: AuditLogEntry[];
@@ -154,17 +155,31 @@ function PorPrepararCard({ order }: { order: OrderData }) {
       <div className={`bg-white rounded-xl shadow-sm active:shadow-md transition-all border overflow-hidden ${
         order.isExpress
           ? 'border-orange-400 ring-1 ring-orange-200'
-          : inProgress
-            ? 'border-blue-300 ring-1 ring-blue-200'
-            : 'border-gray-100'
+          : order.isCashPayment
+            ? 'border-emerald-400 ring-1 ring-emerald-200'
+            : inProgress
+              ? 'border-blue-300 ring-1 ring-blue-200'
+              : 'border-gray-100'
       }`}>
-        {/* Banner envío rápido */}
-        {order.isExpress && (
-          <div className="bg-orange-500 text-white px-4 py-1.5 flex items-center gap-1.5">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            <span className="text-xs font-bold uppercase tracking-wider">Envío Rápido</span>
+        {/* Banners superiores */}
+        {(order.isExpress || order.isCashPayment) && (
+          <div className="flex">
+            {order.isExpress && (
+              <div className="bg-orange-500 text-white px-4 py-1.5 flex items-center gap-1.5 flex-1">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <span className="text-xs font-bold uppercase tracking-wider">Envío Rápido</span>
+              </div>
+            )}
+            {order.isCashPayment && (
+              <div className="bg-emerald-600 text-white px-4 py-1.5 flex items-center gap-1.5 flex-1">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <span className="text-xs font-bold uppercase tracking-wider">Efectivo</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -679,15 +694,27 @@ function PorEnviarCard({ order, onRefresh }: { order: OrderData; onRefresh: () =
 
   return (
     <div className={`bg-white rounded-xl shadow-sm border overflow-hidden ${
-      order.isExpress ? 'border-orange-400 ring-1 ring-orange-200' : 'border-gray-100'
+      order.isExpress ? 'border-orange-400 ring-1 ring-orange-200' : order.isCashPayment ? 'border-emerald-400 ring-1 ring-emerald-200' : 'border-gray-100'
     }`}>
-      {/* Banner envío rápido */}
-      {order.isExpress && (
-        <div className="bg-orange-500 text-white px-4 py-1.5 flex items-center gap-1.5">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-          <span className="text-xs font-bold uppercase tracking-wider">Envío Rápido</span>
+      {/* Banners superiores */}
+      {(order.isExpress || order.isCashPayment) && (
+        <div className="flex">
+          {order.isExpress && (
+            <div className="bg-orange-500 text-white px-4 py-1.5 flex items-center gap-1.5 flex-1">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span className="text-xs font-bold uppercase tracking-wider">Envío Rápido</span>
+            </div>
+          )}
+          {order.isCashPayment && (
+            <div className="bg-emerald-600 text-white px-4 py-1.5 flex items-center gap-1.5 flex-1">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              <span className="text-xs font-bold uppercase tracking-wider">Efectivo</span>
+            </div>
+          )}
         </div>
       )}
 
