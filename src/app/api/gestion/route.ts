@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
 import { PickingSession, AuditLog } from '@/lib/mongodb/models';
-import { getAllPaidOrders } from '@/lib/medusa';
+import { getAllPaidOrders, isCashPayment } from '@/lib/medusa';
 
 // GET /api/gestion?tab=por-preparar|preparados|faltantes|por-enviar|enviados
 export async function GET(req: NextRequest) {
@@ -47,7 +47,8 @@ export async function GET(req: NextRequest) {
       const shippingNameLower = shippingName.toLowerCase();
       const isStorePickup = shippingNameLower.includes('retiro') || shippingNameLower.includes('tienda') || shippingNameLower.includes('pickup') || shippingNameLower.includes('sucursal');
       const storeData = shippingMethod?.data?.store;
-      const customerPhone = order.shipping_address?.phone || order.customer?.phone || null;
+      const customerPhone = order.shipping_address?.phone || order.billing_address?.phone || order.customer?.phone || null;
+      const cashPayment = isCashPayment(order);
 
       const orderData: Record<string, any> = {
         id: order.id,
@@ -72,6 +73,7 @@ export async function GET(req: NextRequest) {
         customerPhone,
         storeName: isStorePickup ? (storeData?.name || shippingName || 'Tienda') : null,
         storeAddress: isStorePickup ? (storeData?.address || '') : null,
+        isCashPayment: cashPayment,
         session: completedSession ? {
           totalRequired: completedSession.totalRequired,
           totalPicked: completedSession.totalPicked,

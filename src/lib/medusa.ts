@@ -185,6 +185,18 @@ const ORDERS_CACHE_DURATION = 120 * 1000;
 let allPaidOrdersCache: { orders: any[]; timestamp: number } | null = null;
 let fetchingPromise: Promise<void> | null = null;
 
+// Detectar si un pedido tiene pago en efectivo
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function isCashPayment(order: any): boolean {
+  const collections = order.payment_collections || [];
+  for (const col of collections) {
+    for (const payment of col.payments || []) {
+      if (payment.provider_id === 'pp_cash_cash') return true;
+    }
+  }
+  return false;
+}
+
 // Trae TODOS los pedidos de Medusa con paginación y los cachea
 async function fetchAllOrders(): Promise<void> {
   const PAGE_SIZE = 100;
@@ -203,7 +215,7 @@ async function fetchAllOrders(): Promise<void> {
   const dateFilter = daysAgo.toISOString();
 
   // Campos reducidos: sin variant.product.* (lo más pesado)
-  const fields = '+shipping_address.*,+customer.*,+items.*,+items.variant.*,+shipping_methods.*';
+  const fields = '+shipping_address.*,+customer.*,+items.*,+items.variant.*,+shipping_methods.*,+payment_collections.payments.*';
 
   while (hasMore) {
     const response = await medusaRequest<{ orders: unknown[]; count: number; offset: number; limit: number }>(
@@ -223,14 +235,19 @@ async function fetchAllOrders(): Promise<void> {
     }
   }
 
-  // Filtrar solo pagados (captured) y excluir cancelados/archivados
+  // Filtrar pagados (captured) O pedidos con pago en efectivo, y excluir cancelados/archivados
   const paidOrders = allOrders.filter((order: any) => {
     const paymentStatus = order.payment_status?.toLowerCase();
     const orderStatus = order.status?.toLowerCase();
-    return paymentStatus === 'captured' && orderStatus !== 'canceled' && orderStatus !== 'archived';
+    if (orderStatus === 'canceled' || orderStatus === 'archived') return false;
+    // Pagados normalmente
+    if (paymentStatus === 'captured') return true;
+    // Pago en efectivo: incluir aunque no esté pagado
+    const isCash = isCashPayment(order);
+    return isCash;
   });
 
-  console.log(`[fetchAllOrders] ✅ ${paidOrders.length} pedidos pagados de ${allOrders.length} totales (últimos 15 días) - ${Date.now() - startTime}ms`);
+  console.log(`[fetchAllOrders] ✅ ${paidOrders.length} pedidos (pagados + efectivo) de ${allOrders.length} totales (últimos 15 días) - ${Date.now() - startTime}ms`);
 
   allPaidOrdersCache = {
     orders: paidOrders,
