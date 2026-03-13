@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getOrderById, Order, LineItem } from '@/lib/medusa';
+import { getOrderById, Order, LineItem, isCashPayment } from '@/lib/medusa';
 import PrintButton from './PrintButton';
 import PickingInterface from './PickingInterface';
 import FaltanteReceiveInterface from './FaltanteReceiveInterface';
@@ -430,6 +430,8 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
   }
 
   const fulfillmentStatus = order.fulfillment_status || 'not_fulfilled';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const orderIsCash = isCashPayment(order as any);
 
   // Ordenar items alfabéticamente por nombre de producto, luego por talle
   const sortedItems = [...order.items].sort((a, b) => {
@@ -444,6 +446,27 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
   return (
     <div className="min-h-screen pb-6">
       <OrderHeader order={order} sortedItems={sortedItems} backUrl={backUrl} />
+
+      {/* Banner EFECTIVO - visible en pantalla e impresión */}
+      {orderIsCash && (
+        <>
+          {/* Pantalla */}
+          <div className="print:hidden mt-4 bg-emerald-600 text-white rounded-xl p-4 flex items-center gap-3">
+            <svg className="w-8 h-8 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <div>
+              <p className="text-lg font-black uppercase tracking-wide">Requiere pago en efectivo</p>
+              <p className="text-sm text-emerald-100">Cobrar al momento de la entrega</p>
+            </div>
+          </div>
+          {/* Impresión */}
+          <div className="hidden print:block mt-2 mb-2 border-4 border-black p-3 text-center">
+            <p className="text-2xl font-black uppercase tracking-wider">REQUIERE PAGO EN EFECTIVO</p>
+            <p className="text-sm font-bold mt-1">Cobrar {formatPrice(order.total)} al momento de la entrega</p>
+          </div>
+        </>
+      )}
 
       <div className="mt-4">
         <CustomerInfo order={order} />
@@ -533,6 +556,8 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
                 customerPhone={order.shipping_address?.phone || order.billing_address?.phone || order.customer?.phone || null}
                 storeName={storeInfo.storeName}
                 storeAddress={storeInfo.storeAddress}
+                isCashPayment={orderIsCash}
+                orderTotal={order.total}
               />
             </div>
           );
