@@ -321,7 +321,7 @@ export async function getOrderById(orderId: string): Promise<OrderResponse> {
   const startTime = Date.now();
 
   const response = await medusaRequest<{ order: unknown }>(
-    `/admin/orders/${orderId}?fields=+items.*,+items.variant.*,+items.variant.product.*,+shipping_address.*,+billing_address.*,+customer.*,+shipping_methods.*`
+    `/admin/orders/${orderId}?fields=+items.*,+items.variant.*,+items.variant.product.*,+shipping_address.*,+billing_address.*,+customer.*,+shipping_methods.*,+payment_collections.payments.*`
   );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

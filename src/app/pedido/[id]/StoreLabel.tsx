@@ -8,6 +8,8 @@ interface StoreLabelProps {
   customerPhone: string | null;
   storeName: string;
   storeAddress: string;
+  isCashPayment?: boolean;
+  orderTotal?: number;
 }
 
 // Formatea número de teléfono para WhatsApp Argentina
@@ -42,7 +44,7 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
-export default function StoreLabel({ orderDisplayId, customerName, customerPhone, storeName, storeAddress }: StoreLabelProps) {
+export default function StoreLabel({ orderDisplayId, customerName, customerPhone, storeName, storeAddress, isCashPayment = false, orderTotal }: StoreLabelProps) {
   const [showLabel, setShowLabel] = useState(false);
 
   const whatsappUrl = customerPhone
@@ -97,6 +99,9 @@ html, body {
 .qr p { font-size: 6.5pt; color: #444; margin-top: 1.5mm; line-height: 1.3; }
 .np { text-align: center; margin-top: 3mm; font-size: 7.5pt; font-weight: 600; color: #333; }
 .ft { text-align: center; margin-top: 3mm; font-size: 5.5pt; color: #999; }
+.cash { border: 2pt solid #000; padding: 2.5mm; text-align: center; margin-bottom: 2.5mm; }
+.cash b { font-size: 12pt; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; display: block; }
+.cash i { font-style: normal; font-size: 8pt; font-weight: 700; display: block; margin-top: 1mm; }
 </style>
 </head>
 <body>
@@ -110,6 +115,8 @@ html, body {
   <div class="ord">
     <span>#${orderDisplayId}</span>
   </div>
+
+  ${isCashPayment ? `<div class="cash"><b>REQUIERE PAGO EN EFECTIVO</b>${orderTotal ? `<i>Cobrar $${Math.round(orderTotal).toLocaleString('es-AR')}</i>` : ''}</div>` : ''}
 
   <div class="sec">
     <small>Cliente</small>
@@ -149,7 +156,7 @@ if (img && !img.complete) {
 
     printWindow.document.write(html);
     printWindow.document.close();
-  }, [orderDisplayId, customerName, customerPhone, storeName, storeAddress, qrUrl]);
+  }, [orderDisplayId, customerName, customerPhone, storeName, storeAddress, qrUrl, isCashPayment, orderTotal]);
 
   function handlePrintLabel() {
     setShowLabel(true);
