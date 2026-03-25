@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
 import { PickingSession, AuditLog } from '@/lib/mongodb/models';
-import { getAllPaidOrders, isCashPayment } from '@/lib/medusa';
+import { getAllPaidOrders, isCashPayment, isMercadoLibreOrder } from '@/lib/medusa';
 
 // GET /api/gestion?tab=por-preparar|preparados|faltantes|por-enviar|enviados
 export async function GET(req: NextRequest) {
@@ -74,6 +74,12 @@ export async function GET(req: NextRequest) {
         storeName: isStorePickup ? (storeData?.name || shippingName || 'Tienda') : null,
         storeAddress: isStorePickup ? (storeData?.address || '') : null,
         isCashPayment: cashPayment,
+        // Mercado Libre: indica si la orden viene de ML para mostrar badge y etiqueta
+        isMercadoLibre: isMercadoLibreOrder(order),
+        mlShipmentId: order.metadata?.ml_shipment_id || null,
+        mlOrderId: order.metadata?.ml_order_id || null,
+        mlShipmentStatus: order.metadata?.ml_shipment_status || null,
+        mlTrackingNumber: order.metadata?.ml_tracking_number || null,
         session: completedSession ? {
           totalRequired: completedSession.totalRequired,
           totalPicked: completedSession.totalPicked,

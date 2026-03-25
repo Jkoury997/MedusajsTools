@@ -65,6 +65,16 @@ interface OrderData {
   storeName: string | null;
   storeAddress: string | null;
   isCashPayment: boolean;
+  /** true si la orden viene de Mercado Libre */
+  isMercadoLibre: boolean;
+  /** ID del envío en ML — para descargar etiqueta de Mercado Envíos */
+  mlShipmentId: number | null;
+  /** ID de la orden en ML */
+  mlOrderId: number | null;
+  /** Estado del envío en ML (ready_to_ship, shipped, delivered) */
+  mlShipmentStatus: string | null;
+  /** Número de tracking de ML */
+  mlTrackingNumber: string | null;
   session: SessionInfo | null;
   inProgressSession: InProgressSession | null;
   logs?: AuditLogEntry[];
@@ -162,8 +172,17 @@ function PorPrepararCard({ order }: { order: OrderData }) {
               : 'border-gray-100'
       }`}>
         {/* Banners superiores */}
-        {(order.isExpress || order.isCashPayment) && (
+        {(order.isExpress || order.isCashPayment || order.isMercadoLibre) && (
           <div className="flex">
+            {/* Banner de Mercado Libre — amarillo con logo de ML */}
+            {order.isMercadoLibre && (
+              <div className="bg-yellow-400 text-gray-900 px-4 py-1.5 flex items-center gap-1.5 flex-1">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15l-4-4 1.41-1.41L11 14.17l6.59-6.59L19 9l-8 8z"/>
+                </svg>
+                <span className="text-xs font-bold uppercase tracking-wider">Mercado Libre</span>
+              </div>
+            )}
             {order.isExpress && (
               <div className="bg-orange-500 text-white px-4 py-1.5 flex items-center gap-1.5 flex-1">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
