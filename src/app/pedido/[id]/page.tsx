@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getOrderById, Order, LineItem, isCashPayment } from '@/lib/medusa';
+import { getOrderById, Order, LineItem, isCashPayment, isMercadoLibreOrder } from '@/lib/medusa';
 import PrintButton from './PrintButton';
 import PickingInterface from './PickingInterface';
 import FaltanteReceiveInterface from './FaltanteReceiveInterface';
@@ -446,6 +446,46 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
   return (
     <div className="min-h-screen pb-6">
       <OrderHeader order={order} sortedItems={sortedItems} backUrl={backUrl} />
+
+      {/* Banner MERCADO LIBRE — visible solo si la orden viene de ML */}
+      {isMercadoLibreOrder(order) && (
+        <>
+          {/* Pantalla */}
+          <div className="print:hidden mt-4 bg-yellow-400 text-gray-900 rounded-xl p-4 flex items-center gap-3">
+            <svg className="w-8 h-8 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15l-4-4 1.41-1.41L11 14.17l6.59-6.59L19 9l-8 8z"/>
+            </svg>
+            <div className="flex-1">
+              <p className="text-lg font-black uppercase tracking-wide">Venta Mercado Libre</p>
+              <p className="text-sm">
+                Orden ML #{order.metadata?.ml_order_id}
+                {order.metadata?.ml_tracking_number && (
+                  <span className="ml-2">· Tracking: {order.metadata.ml_tracking_number}</span>
+                )}
+              </p>
+            </div>
+            {/* Botón para descargar etiqueta de ML */}
+            {order.metadata?.ml_shipment_id && (
+              <a
+                href={`${process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'https://backend.marcelakoury.com'}/admin/mercadolibre/label?shipment_id=${order.metadata.ml_shipment_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-gray-900 text-yellow-400 px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-800 transition-colors flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                Etiqueta ML
+              </a>
+            )}
+          </div>
+          {/* Impresión */}
+          <div className="hidden print:block mt-2 mb-2 border-4 border-black p-3 text-center">
+            <p className="text-2xl font-black uppercase tracking-wider">VENTA MERCADO LIBRE</p>
+            <p className="text-sm font-bold mt-1">Orden ML #{order.metadata?.ml_order_id} · Imprimir etiqueta de Mercado Envíos</p>
+          </div>
+        </>
+      )}
 
       {/* Banner EFECTIVO - visible en pantalla e impresión */}
       {orderIsCash && (

@@ -130,6 +130,23 @@ export interface ShippingMethod {
   } | null;
 }
 
+/**
+ * Metadata de la orden.
+ * sales_channel indica de dónde vino la venta ("mercadolibre" o undefined para web).
+ * Los campos ml_* solo están presentes en órdenes de Mercado Libre.
+ */
+export interface OrderMetadata {
+  sales_channel?: string;           // "mercadolibre" si viene de ML
+  ml_order_id?: number;             // ID de la orden en ML
+  ml_shipment_id?: number;          // ID del envío en ML (para descargar etiqueta)
+  ml_pack_id?: number | null;       // ID del pack/carrito en ML
+  ml_buyer_id?: number;             // ID del comprador en ML
+  ml_buyer_nickname?: string;       // Nickname del comprador en ML
+  ml_shipment_status?: string;      // Estado del envío en ML
+  ml_tracking_number?: string;      // Número de tracking de ML
+  [key: string]: unknown;
+}
+
 export interface Order {
   id: string;
   display_id: number;
@@ -155,6 +172,24 @@ export interface Order {
     last_name: string;
     phone?: string | null;
   } | null;
+  /** Metadata de la orden — contiene info de ML si es una venta de Mercado Libre */
+  metadata?: OrderMetadata | null;
+}
+
+/**
+ * Verifica si una orden proviene de Mercado Libre.
+ * Se usa para mostrar el badge de ML y la etiqueta de envío correcta.
+ */
+export function isMercadoLibreOrder(order: Order): boolean {
+  return order.metadata?.sales_channel === "mercadolibre";
+}
+
+/**
+ * Obtiene el ID del envío de ML de una orden.
+ * Se usa para descargar la etiqueta de Mercado Envíos.
+ */
+export function getMLShipmentId(order: Order): number | null {
+  return order.metadata?.ml_shipment_id ?? null;
 }
 
 export interface OrdersResponse {
@@ -215,7 +250,8 @@ async function fetchAllOrders(): Promise<void> {
   const dateFilter = daysAgo.toISOString();
 
   // Campos reducidos: sin variant.product.* (lo más pesado)
-  const fields = '+shipping_address.*,+customer.*,+items.*,+items.variant.*,+shipping_methods.*,+payment_collections.payments.*';
+  // +metadata se necesita para detectar órdenes de Mercado Libre (metadata.sales_channel)
+  const fields = '+shipping_address.*,+customer.*,+items.*,+items.variant.*,+shipping_methods.*,+payment_collections.payments.*,+metadata';
 
   while (hasMore) {
     const response = await medusaRequest<{ orders: unknown[]; count: number; offset: number; limit: number }>(
@@ -321,7 +357,7 @@ export async function getOrderById(orderId: string): Promise<OrderResponse> {
   const startTime = Date.now();
 
   const response = await medusaRequest<{ order: unknown }>(
-    `/admin/orders/${orderId}?fields=+items.*,+items.variant.*,+items.variant.product.*,+shipping_address.*,+billing_address.*,+customer.*,+shipping_methods.*,+payment_collections.payments.*`
+    `/admin/orders/${orderId}?fields=+items.*,+items.variant.*,+items.variant.product.*,+shipping_address.*,+billing_address.*,+customer.*,+shipping_methods.*,+payment_collections.payments.*,+metadata`
   );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
