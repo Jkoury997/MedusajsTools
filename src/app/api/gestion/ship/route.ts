@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
 import { connectDB } from '@/lib/mongodb/connection';
-import { audit } from '@/lib/mongodb/models';
+import { audit, StoreShipment } from '@/lib/mongodb/models';
+import { isStorePickup } from '@/lib/shipping';
 
 // POST /api/gestion/ship - Marcar pedido como enviado (crear shipment)
 export async function POST(req: NextRequest) {
@@ -16,17 +17,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Obtener el pedido con fulfillments e items de cada fulfillment
+    // Obtener el pedido con fulfillments e items de cada fulfillment y shipping methods
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const orderData = await medusaRequest<{ order: any }>(
-      `/admin/orders/${orderId}?fields=+fulfillments.*,+fulfillments.items.*`
+      `/admin/orders/${orderId}?fields=+fulfillments.*,+fulfillments.items.*,+shipping_methods.*`
     );
 
     const order = orderData.order;
     const fulfillments = order.fulfillments || [];
     const fulfillmentStatus = order.fulfillment_status || '';
+    const shippingMethod = order.shipping_methods?.[0];
+    const shippingOptionId = shippingMethod?.shipping_option_id;
 
-    // Si ya está shipped o delivered, no hacer nada
+    // Verificar si ya fue enviado a tienda (para store pickup)
+    if (isStorePickup(shippingOptionId)) {
+      const existingShipment = await StoreShipment.findOne({ orderId });
+      if (existingShipment) {
+        return NextResponse.json(
+          { success: false, error: 'Este pedido ya fue enviado a la tienda' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Si ya está shipped o delivered en Medusa, no hacer nada
     if (['shipped', 'partially_shipped', 'delivered'].includes(fulfillmentStatus)) {
       return NextResponse.json(
         { success: false, error: 'Este pedido ya fue enviado' },
@@ -41,11 +55,42 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Crear shipment para cada fulfillment que no tenga uno
+    // Para pedidos de RETIRO EN TIENDA: no llamar a Medusa shipment API
+    // (Medusa trata pickup shipments como delivered automáticamente).
+    // En su lugar, registrar el envío a tienda en MongoDB.
+    if (isStorePickup(shippingOptionId)) {
+      const storeData = shippingMethod?.data?.store;
+
+      await StoreShipment.create({
+        orderId,
+        orderDisplayId: orderDisplayId || 0,
+        storeId: storeData?.id || '',
+        storeName: storeData?.name || shippingMethod?.name || 'Tienda',
+        storeAddress: storeData?.address || '',
+        shippedByName: 'Gestión',
+        shippedAt: new Date(),
+      });
+
+      invalidateOrdersCache();
+
+      audit({
+        action: 'order_ship_store',
+        userName: 'Gestión',
+        orderId,
+        orderDisplayId: orderDisplayId || 0,
+        details: `Pedido #${orderDisplayId || orderId} enviado a tienda ${storeData?.name || ''}`,
+        metadata: { storeName: storeData?.name, storeId: storeData?.id },
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
+    // Para envíos normales: crear shipment en Medusa
     for (const fulfillment of fulfillments) {
       if (fulfillment.shipped_at) continue;
 
       // Medusa v2 requiere items en el body del shipment (usando line_item_id, no fulfillment item id)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const shipmentItems = (fulfillment.items || []).map((item: any) => ({
         id: item.line_item_id,
         quantity: item.quantity,

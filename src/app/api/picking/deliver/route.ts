@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
-import { PickingUser, StoreDelivery, audit } from '@/lib/mongodb/models';
+import { PickingUser, StoreDelivery, StoreShipment, audit } from '@/lib/mongodb/models';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
-import { isFactoryPickup } from '@/lib/shipping';
+import { isFactoryPickup, isStorePickup as checkStorePickup } from '@/lib/shipping';
 
 // POST /api/picking/deliver - Marcar pedido como entregado en tienda
 export async function POST(req: NextRequest) {
@@ -62,14 +62,25 @@ export async function POST(req: NextRequest) {
         `/admin/orders/${orderId}?fields=+fulfillments.*,+shipping_methods.*`
       );
 
+      const methods = orderData.order.shipping_methods || [];
+      const method = methods[0];
+      const shippingOptionId = method?.shipping_option_id;
+
       // Si es picker, solo puede entregar retiro en fábrica
-      if (userRole === 'picker') {
-        const methods = orderData.order.shipping_methods || [];
-        const method = methods[0];
-        if (!isFactoryPickup(method?.shipping_option_id)) {
+      if (userRole === 'picker' && !isFactoryPickup(shippingOptionId)) {
+        return NextResponse.json(
+          { success: false, error: 'Solo podés entregar pedidos de retiro en fábrica' },
+          { status: 403 }
+        );
+      }
+
+      // Para retiro en tienda, verificar que el pedido haya sido enviado a la tienda
+      if (checkStorePickup(shippingOptionId)) {
+        const storeShipment = await StoreShipment.findOne({ orderId });
+        if (!storeShipment) {
           return NextResponse.json(
-            { success: false, error: 'Solo podés entregar pedidos de retiro en fábrica' },
-            { status: 403 }
+            { success: false, error: 'Este pedido aún no fue enviado a la tienda' },
+            { status: 400 }
           );
         }
       }
