@@ -176,6 +176,32 @@ const StoreDeliverySchema = new Schema<IStoreDelivery>(
   { timestamps: true }
 );
 
+// ==================== STORE SHIPMENT (Envío a tienda) ====================
+
+export interface IStoreShipment extends Document {
+  orderId: string;
+  orderDisplayId: number;
+  storeId: string;
+  storeName: string;
+  storeAddress: string;
+  shippedByName: string;
+  shippedAt: Date;
+  createdAt: Date;
+}
+
+const StoreShipmentSchema = new Schema<IStoreShipment>(
+  {
+    orderId: { type: String, required: true, unique: true, index: true },
+    orderDisplayId: { type: Number, required: true },
+    storeId: { type: String, default: '' },
+    storeName: { type: String, required: true },
+    storeAddress: { type: String, default: '' },
+    shippedByName: { type: String, required: true },
+    shippedAt: { type: Date, default: Date.now },
+  },
+  { timestamps: true }
+);
+
 // ==================== API KEY ====================
 
 export interface IApiKey extends Document {
@@ -212,6 +238,7 @@ export type AuditAction =
   | 'fulfillment_create'
   | 'fulfillment_error'
   | 'order_ship'
+  | 'order_ship_store'
   | 'order_deliver'
   | 'user_create'
   | 'user_update'
@@ -294,6 +321,9 @@ export const StoreDelivery: Model<IStoreDelivery> =
 
 export const Store: Model<IStore> =
   mongoose.models.Store || mongoose.model<IStore>('Store', StoreSchema);
+
+export const StoreShipment: Model<IStoreShipment> =
+  mongoose.models.StoreShipment || mongoose.model<IStoreShipment>('StoreShipment', StoreShipmentSchema);
 
 export const ApiKey: Model<IApiKey> =
   mongoose.models.ApiKey || mongoose.model<IApiKey>('ApiKey', ApiKeySchema);

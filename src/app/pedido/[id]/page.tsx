@@ -5,9 +5,9 @@ import PickingInterface from './PickingInterface';
 import FaltanteReceiveInterface from './FaltanteReceiveInterface';
 import StoreLabel from './StoreLabel';
 import DeliverButton from './DeliverButton';
-import { isFactoryPickup as checkFactoryPickup } from '@/lib/shipping';
+import { isFactoryPickup as checkFactoryPickup, isStorePickup as checkStorePickup } from '@/lib/shipping';
 import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession } from '@/lib/mongodb/models';
+import { PickingSession, StoreShipment } from '@/lib/mongodb/models';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -433,6 +433,18 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const orderIsCash = isCashPayment(order as any);
 
+  // Detectar si es retiro en tienda y si ya fue enviado a tienda
+  const orderIsStorePickup = checkStorePickup(order.shipping_methods?.[0]?.shipping_option_id);
+  let orderIsSentToStore = false;
+  if (orderIsStorePickup) {
+    try {
+      const storeShipment = await StoreShipment.findOne({ orderId: order.id }).lean();
+      orderIsSentToStore = !!storeShipment;
+    } catch (e) {
+      console.error('Error checking store shipment:', e);
+    }
+  }
+
   // Ordenar items alfabéticamente por nombre de producto, luego por talle
   const sortedItems = [...order.items].sort((a, b) => {
     const nameA = getProductName(a).toLowerCase();
@@ -603,12 +615,14 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
           );
         })()}
 
-        {/* Botón entregar — retiro en fábrica */}
+        {/* Botón entregar — retiro en fábrica o retiro en tienda */}
         <DeliverButton
           orderId={order.id}
           orderDisplayId={order.display_id}
           customerName={getCustomerName(order)}
           isFactoryPickup={isFactoryPickup(order)}
+          isStorePickup={orderIsStorePickup}
+          isSentToStore={orderIsSentToStore}
           fulfillmentStatus={order.fulfillment_status || 'not_fulfilled'}
         />
 

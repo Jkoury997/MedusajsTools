@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession, AuditLog } from '@/lib/mongodb/models';
+import { PickingSession, StoreShipment } from '@/lib/mongodb/models';
 import { getAllPaidOrders, isCashPayment, isMercadoLibreOrder } from '@/lib/medusa';
 
 // GET /api/gestion?tab=por-preparar|preparados|faltantes|por-enviar|enviados
@@ -28,12 +28,20 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Obtener todos los envíos a tienda (StoreShipment) para saber qué pedidos fueron enviados a tienda
+    const allStoreShipments = await StoreShipment.find({}).select('orderId shippedAt storeName').lean();
+    const storeShipmentMap = new Map<string, any>();
+    for (const ss of allStoreShipments) {
+      storeShipmentMap.set(ss.orderId, ss);
+    }
+
     // Clasificar pedidos
     const results: any[] = [];
 
     for (const order of allOrders) {
       const completedSession = completedSessionMap.get(order.id);
       const inProgressSession = inProgressSessionMap.get(order.id);
+      const storeShipment = storeShipmentMap.get(order.id);
       const fulfillmentStatus = order.fulfillment_status || 'not_fulfilled';
 
       // Determinar si el envío es express
@@ -49,6 +57,9 @@ export async function GET(req: NextRequest) {
       const storeData = shippingMethod?.data?.store;
       const customerPhone = order.shipping_address?.phone || order.billing_address?.phone || order.customer?.phone || null;
       const cashPayment = isCashPayment(order);
+
+      // Para retiro en tienda: determinar si fue enviado a tienda (via MongoDB)
+      const isSentToStore = isStorePickup && !!storeShipment;
 
       const orderData: Record<string, any> = {
         id: order.id,
@@ -70,6 +81,7 @@ export async function GET(req: NextRequest) {
         isExpress,
         itemCount: (order.items || []).reduce((sum: number, item: any) => sum + (item.quantity || 0), 0),
         isStorePickup,
+        isSentToStore,
         customerPhone,
         storeName: isStorePickup ? (storeData?.name || shippingName || 'Tienda') : null,
         storeAddress: isStorePickup ? (storeData?.address || '') : null,
@@ -80,6 +92,7 @@ export async function GET(req: NextRequest) {
         mlOrderId: order.metadata?.ml_order_id || null,
         mlShipmentStatus: order.metadata?.ml_shipment_status || null,
         mlTrackingNumber: order.metadata?.ml_tracking_number || null,
+        sentToStoreAt: storeShipment?.shippedAt || null,
         session: completedSession ? {
           totalRequired: completedSession.totalRequired,
           totalPicked: completedSession.totalPicked,
@@ -141,18 +154,24 @@ export async function GET(req: NextRequest) {
           break;
 
         case 'por-enviar':
-          // Pedidos fulfilled o partially_fulfilled (voucher), sin faltantes sin resolver, listos para enviar
+          // Pedidos fulfilled o partially_fulfilled, sin faltantes sin resolver, listos para enviar
+          // Excluir pedidos de retiro en tienda que ya fueron enviados a tienda
           if (['fulfilled', 'partially_fulfilled'].includes(fulfillmentStatus) && completedSession) {
             const hasUnresolvedFaltantes = completedSession.totalMissing > 0 && ['pending', 'waiting'].includes(completedSession.faltanteResolution);
-            if (!hasUnresolvedFaltantes) {
+            if (!hasUnresolvedFaltantes && !isSentToStore) {
               results.push(orderData);
             }
           }
           break;
 
         case 'enviados':
-          // Pedidos enviados (NO entregados)
+          // Pedidos enviados (NO entregados):
+          // 1. Envíos normales con status shipped/partially_shipped en Medusa
+          // 2. Retiro en tienda que fueron enviados a tienda (tracked en MongoDB, Medusa sigue en fulfilled)
           if (['shipped', 'partially_shipped'].includes(fulfillmentStatus)) {
+            results.push(orderData);
+          } else if (isSentToStore && ['fulfilled', 'partially_fulfilled'].includes(fulfillmentStatus)) {
+            // Retiro en tienda enviado: Medusa sigue en fulfilled pero MongoDB tiene StoreShipment
             results.push(orderData);
           }
           break;
@@ -170,7 +189,14 @@ export async function GET(req: NextRequest) {
     const counts: Record<string, number> = { 'por-preparar': 0, faltantes: 0, 'por-enviar': 0, enviados: 0 };
     for (const order of allOrders) {
       const completedSession = completedSessionMap.get(order.id);
+      const orderStoreShipment = storeShipmentMap.get(order.id);
       const fs = order.fulfillment_status || 'not_fulfilled';
+
+      // Detectar si es retiro en tienda
+      const sm = order.shipping_methods?.[0];
+      const smName = (sm?.name || '').toLowerCase();
+      const orderIsStorePickup = smName.includes('retiro') || smName.includes('tienda') || smName.includes('pickup') || smName.includes('sucursal');
+      const orderIsSentToStore = orderIsStorePickup && !!orderStoreShipment;
 
       if (['not_fulfilled', 'partially_fulfilled'].includes(fs) && !completedSession) {
         counts['por-preparar']++;
@@ -179,6 +205,9 @@ export async function GET(req: NextRequest) {
         const hasUnresolvedFaltantes = completedSession.totalMissing > 0 && ['pending', 'waiting'].includes(completedSession.faltanteResolution);
         if (hasUnresolvedFaltantes) {
           counts.faltantes++;
+        } else if (orderIsSentToStore) {
+          // Retiro en tienda enviado: contar como enviado, no como por-enviar
+          counts.enviados++;
         } else {
           counts['por-enviar']++;
         }
