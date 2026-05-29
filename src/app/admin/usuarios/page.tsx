@@ -5,12 +5,14 @@ import { PinInput, Button, Badge, Card, Alert, Spinner, Input, ConfirmDialog } f
 import { AdminNav } from '@/components/AdminNav';
 
 interface PickingUser {
-  _id: string;
+  id: string;
   name: string;
   active: boolean;
   role?: 'picker' | 'store';
   storeId?: string;
   storeName?: string;
+  /** PIN en claro (solo lo devuelve la API a un admin). null = aún no visible. */
+  pin?: string | null;
   createdAt: string;
 }
 
@@ -53,6 +55,15 @@ export default function AdminUsuariosPage() {
   const [success, setSuccess] = useState('');
   const [deleting, setDeleting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
+  const [revealedPins, setRevealedPins] = useState<Set<string>>(new Set());
+
+  function togglePin(id: string) {
+    setRevealedPins(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   const fetchStores = useCallback(async () => {
     try {
@@ -119,7 +130,7 @@ export default function AdminUsuariosPage() {
         setUsers(data.users);
         // Cargar stats de cada usuario
         for (const user of data.users) {
-          fetchUserStats(user._id);
+          fetchUserStats(user.id);
         }
       }
     } catch (err) {
@@ -191,7 +202,7 @@ export default function AdminUsuariosPage() {
           body.storeName = storeName;
         }
 
-        const res = await fetch(`/api/picking/users/${editingUser._id}`, {
+        const res = await fetch(`/api/picking/users/${editingUser.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -460,9 +471,9 @@ export default function AdminUsuariosPage() {
         {!loading && users.length > 0 && (
           <div className="space-y-3">
             {users.map(user => {
-              const stats = userStats[user._id];
+              const stats = userStats[user.id];
               return (
-                <Card key={user._id} className={!user.active ? 'opacity-60' : ''}>
+                <Card key={user.id} className={!user.active ? 'opacity-60' : ''}>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${
@@ -492,11 +503,11 @@ export default function AdminUsuariosPage() {
                           </svg>
                         </button>
                         <button
-                          onClick={() => setConfirmDelete({ id: user._id, name: user.name })}
-                          disabled={deleting === user._id}
+                          onClick={() => setConfirmDelete({ id: user.id, name: user.name })}
+                          disabled={deleting === user.id}
                           className="text-gray-400 hover:text-red-600 p-2 disabled:opacity-50"
                         >
-                          {deleting === user._id ? (
+                          {deleting === user.id ? (
                             <Spinner className="w-5 h-5" />
                           ) : (
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -505,6 +516,36 @@ export default function AdminUsuariosPage() {
                           )}
                         </button>
                       </div>
+                    </div>
+
+                    {/* PIN (visible solo para admin) */}
+                    <div className="flex items-center gap-2 text-sm bg-gray-50 rounded-lg px-3 py-2 mb-2">
+                      <span className="text-gray-500 font-medium">PIN:</span>
+                      {user.pin ? (
+                        <>
+                          <span className="font-mono tracking-widest text-gray-900">
+                            {revealedPins.has(user.id) ? user.pin : '•'.repeat(user.pin.length)}
+                          </span>
+                          <button
+                            onClick={() => togglePin(user.id)}
+                            className="text-brand-600 hover:text-brand-700 text-xs font-medium"
+                          >
+                            {revealedPins.has(user.id) ? 'Ocultar' : 'Ver'}
+                          </button>
+                          {revealedPins.has(user.id) && (
+                            <button
+                              onClick={() => navigator.clipboard.writeText(user.pin || '')}
+                              className="text-gray-400 hover:text-gray-600 text-xs"
+                            >
+                              Copiar
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-gray-400 text-xs">
+                          aún no visible — se revela cuando el usuario hace login o reseteás su PIN
+                        </span>
+                      )}
                     </div>
 
                     {/* Stats */}

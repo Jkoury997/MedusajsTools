@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEm } from '@/lib/db';
 import { User } from '@/lib/entities';
 import { audit } from '@/lib/audit';
-import { hashPin, pinLookupHashes, isLegacyStored } from '@/lib/pin';
+import { hashPin, pinLookupHashes, isLegacyStored, encryptPin } from '@/lib/pin';
 import { createSessionToken, SESSION_DURATION } from '@/lib/auth';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
@@ -56,11 +56,18 @@ export async function POST(req: NextRequest) {
     // Verificar si es picker (lookup determinístico: HMAC nuevo o sha256 legacy)
     const user = await em.findOne(User, { pin: { $in: pinLookupHashes(pin) }, role: 'picker', active: true });
     if (user) {
-      // Migración lazy: si el hash es legacy, re-hashear a HMAC.
+      // Migración lazy: re-hashear legacy a HMAC y guardar el PIN cifrado
+      // (para que el admin pueda verlo) si todavía no lo tiene.
+      let needFlush = false;
       if (isLegacyStored(user.pin, pin)) {
         user.pin = hashPin(pin);
-        await em.flush();
+        needFlush = true;
       }
+      if (!user.pinEnc) {
+        user.pinEnc = encryptPin(pin);
+        needFlush = true;
+      }
+      if (needFlush) await em.flush();
       const token = createSessionToken(user.id, 'picker');
       const response = NextResponse.json({
         success: true,

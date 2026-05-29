@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEm } from '@/lib/db';
 import { User, PickingSession } from '@/lib/entities';
 import { audit } from '@/lib/audit';
-import { hashPin, pinLookupHashes } from '@/lib/pin';
+import { hashPin, pinLookupHashes, encryptPin } from '@/lib/pin';
 import { requireRole } from '@/lib/session';
 import { errorResponse } from '@/lib/http';
 
@@ -95,6 +95,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
         );
       }
       updateData.pin = hashPin(pin);
+      updateData.pinEnc = encryptPin(pin);
     }
 
     if (active !== undefined) {
@@ -128,7 +129,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       metadata: { targetUserId: userId, targetUserName: user.name, changes: Object.keys(updateData) },
     });
 
-    const { pin: _pin, ...userWithoutPin } = user;
+    const { pin: _pin, pinEnc: _pinEnc, ...userWithoutPin } = user;
     return NextResponse.json({ success: true, user: userWithoutPin });
   } catch (error) {
     return errorResponse(error);
