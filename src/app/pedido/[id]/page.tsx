@@ -474,10 +474,10 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
                 )}
               </p>
             </div>
-            {/* Botón para descargar etiqueta de ML */}
+            {/* Botón para descargar etiqueta de Mercado Envíos (proxy con sesión) */}
             {order.metadata?.ml_shipment_id && (
               <a
-                href={`${process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'https://backend.marcelakoury.com'}/admin/mercadolibre/label?shipment_id=${order.metadata.ml_shipment_id}`}
+                href={`/api/picking/ml-label?shipmentId=${order.metadata.ml_shipment_id}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="bg-gray-900 text-yellow-400 px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-800 transition-colors flex items-center gap-2"
