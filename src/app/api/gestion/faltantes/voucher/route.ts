@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession, audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { PickingSession } from '@/lib/entities';
+import { audit } from '@/lib/audit';
 import { medusaRequest } from '@/lib/medusa';
 
 function generateVoucherCode(orderDisplayId: number): string {
@@ -15,7 +16,7 @@ function generateVoucherCode(orderDisplayId: number): string {
 // POST /api/gestion/faltantes/voucher - Crear promoción (voucher) en Medusa y resolver faltante
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { orderId, value, notes } = await req.json();
 
     if (!orderId || !value) {
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Obtener sesión
-    const session = await PickingSession.findOne({ orderId, status: 'completed' });
+    const session = await em.findOne(PickingSession, { orderId, status: 'completed' });
     if (!session) {
       return NextResponse.json(
         { success: false, error: 'Sesión no encontrada' },
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
     session.faltanteResolution = 'voucher';
     session.faltanteResolvedAt = new Date();
     session.faltanteNotes = `Voucher: ${promotion.code} - Valor: $${roundedValue}${notes ? ` - ${notes}` : ''}`;
-    await session.save();
+    await em.flush();
 
     // Audit log
     audit({

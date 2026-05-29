@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession, audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { PickingSession } from '@/lib/entities';
+import { audit } from '@/lib/audit';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
 
 // POST /api/gestion/faltantes - Resolver faltante
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { orderId, resolution, notes } = await req.json();
 
     if (!orderId || !resolution) {
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const session = await PickingSession.findOne({ orderId, status: 'completed' });
+    const session = await em.findOne(PickingSession, { orderId, status: 'completed' }, { populate: ['items'] });
     if (!session) {
       return NextResponse.json(
         { success: false, error: 'Sesión no encontrada' },
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
     session.faltanteResolution = resolution;
     session.faltanteResolvedAt = new Date();
     session.faltanteNotes = notes || '';
-    await session.save();
+    await em.flush();
 
     // Si es voucher o resolved, crear fulfillment solo con lo que se pickeó
     // (los faltantes no se van a recibir)
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
         const order = orderData.order;
 
         const fulfillmentItems: { id: string; quantity: number }[] = [];
-        for (const sessionItem of session.items) {
+        for (const sessionItem of session.items.getItems()) {
           if (sessionItem.quantityPicked <= 0) continue;
           const medusaItem = order.items?.find((i: any) => i.id === sessionItem.lineItemId);
           if (medusaItem) {

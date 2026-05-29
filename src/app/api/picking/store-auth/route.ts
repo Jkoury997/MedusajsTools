@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingUser, Store, hashPin, audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { User, Store } from '@/lib/entities';
+import { audit } from '@/lib/audit';
+import { hashPin } from '@/lib/pin';
 import { createSessionToken } from '@/lib/auth';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
@@ -19,7 +21,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await connectDB();
+    const em = await getEm();
     const { pin } = await req.json();
 
     if (!pin || !/^\d{4,6}$/.test(pin)) {
@@ -31,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     // Admin puede entrar a tienda — tomar la primera tienda disponible
     if (ADMIN_PIN && pin === ADMIN_PIN) {
-      const firstStore = await Store.findOne({ name: { $exists: true, $ne: '' } });
+      const firstStore = await em.findOne(Store, { name: { $ne: '' } });
       const token = createSessionToken('admin', 'store');
       return NextResponse.json({
         success: true,
@@ -47,11 +49,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const user = await PickingUser.findOne({
+    const user = await em.findOne(User, {
       pin: hashPin(pin),
       role: 'store',
       active: true,
-    }).select('-pin');
+    });
 
     if (!user) {
       return NextResponse.json(
@@ -63,17 +65,17 @@ export async function POST(req: NextRequest) {
     audit({
       action: 'store_login',
       userName: user.name,
-      userId: user._id.toString(),
+      userId: user.id,
       details: `Login tienda: ${user.storeName} (${user.name})`,
     });
 
     const requirePinChange = pin.length < 6;
-    const token = createSessionToken(user._id.toString(), 'store');
+    const token = createSessionToken(user.id, 'store');
 
     return NextResponse.json({
       success: true,
       user: {
-        id: user._id,
+        id: user.id,
         name: user.name,
         role: user.role,
         storeId: user.storeId,

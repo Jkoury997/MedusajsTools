@@ -1,24 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession, audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { PickingSession } from '@/lib/entities';
+import { audit } from '@/lib/audit';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
 
 // GET /api/gestion/faltantes/receive?orderId=xxx - Obtener items faltantes para escaneo
 export async function GET(req: NextRequest) {
   try {
-    await connectDB();
+    const em = await getEm();
     const orderId = req.nextUrl.searchParams.get('orderId');
 
     if (!orderId) {
       return NextResponse.json({ success: false, error: 'orderId requerido' }, { status: 400 });
     }
 
-    const session = await PickingSession.findOne({ orderId, status: 'completed' }).lean();
+    const session = await em.findOne(PickingSession, { orderId, status: 'completed' }, { populate: ['items'] });
     if (!session) {
       return NextResponse.json({ success: false, error: 'Sesión no encontrada' }, { status: 404 });
     }
 
-    const missingItems = session.items
+    const missingItems = session.items.getItems()
       .filter((i: any) => (i.quantityMissing || 0) > 0)
       .map((i: any) => ({
         lineItemId: i.lineItemId,
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
 // POST /api/gestion/faltantes/receive - Registrar item recibido por escaneo
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { orderId, barcode, sku, lineItemId } = await req.json();
 
     if (!orderId) {
@@ -55,14 +56,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'barcode, sku o lineItemId requerido' }, { status: 400 });
     }
 
-    const session = await PickingSession.findOne({ orderId, status: 'completed' });
+    const session = await em.findOne(PickingSession, { orderId, status: 'completed' }, { populate: ['items'] });
     if (!session) {
       return NextResponse.json({ success: false, error: 'Sesión no encontrada' }, { status: 404 });
     }
 
     // Buscar el item faltante que coincida
     let matchedItem = null;
-    for (const item of session.items) {
+    for (const item of session.items.getItems()) {
       if ((item.quantityMissing || 0) <= 0) continue;
 
       const received = (item as any).quantityReceived || 0;
@@ -92,10 +93,10 @@ export async function POST(req: NextRequest) {
     // Incrementar quantityReceived
     const currentReceived = (matchedItem as any).quantityReceived || 0;
     (matchedItem as any).quantityReceived = currentReceived + 1;
-    await session.save();
+    await em.flush();
 
     // Verificar si todos los faltantes fueron recibidos
-    const allReceived = session.items
+    const allReceived = session.items.getItems()
       .filter(i => (i.quantityMissing || 0) > 0)
       .every(i => ((i as any).quantityReceived || 0) >= (i.quantityMissing || 0));
 
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest) {
       session.faltanteResolution = 'resolved';
       session.faltanteResolvedAt = new Date();
       session.faltanteNotes = (session.faltanteNotes || '') + ' | Mercadería recibida completa';
-      await session.save();
+      await em.flush();
 
       // Crear UN SOLO fulfillment en Medusa con TODOS los items (pickeados + faltantes recibidos)
       let fulfillmentCreated = false;
@@ -116,7 +117,7 @@ export async function POST(req: NextRequest) {
 
         // Construir fulfillment con cantidad total por item (picked + missing)
         const fulfillmentItems: { id: string; quantity: number }[] = [];
-        for (const sessionItem of session.items) {
+        for (const sessionItem of session.items.getItems()) {
           const totalQty = sessionItem.quantityPicked + (sessionItem.quantityMissing || 0);
           if (totalQty <= 0) continue;
 
@@ -152,7 +153,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Estado actual de items
-    const missingItems = session.items
+    const missingItems = session.items.getItems()
       .filter((i: any) => (i.quantityMissing || 0) > 0)
       .map((i: any) => ({
         lineItemId: i.lineItemId,

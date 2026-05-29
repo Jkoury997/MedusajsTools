@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession, PickingUser, audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { PickingSession, User } from '@/lib/entities';
+import { audit } from '@/lib/audit';
 import { medusaRequest } from '@/lib/medusa';
 
 interface RouteParams {
@@ -10,7 +11,7 @@ interface RouteParams {
 // POST /api/picking/session/:orderId/complete - Completar picking + fulfillment en Medusa
 export async function POST(req: NextRequest, { params }: RouteParams) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { orderId } = await params;
     const { userId } = await req.json();
 
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     }
 
     // Validar usuario
-    const user = await PickingUser.findById(userId);
+    const user = await em.findOne(User, { id: userId });
     if (!user) {
       return NextResponse.json(
         { success: false, error: 'Usuario no válido' },
@@ -31,10 +32,10 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     }
 
     // Obtener sesión
-    const session = await PickingSession.findOne({
+    const session = await em.findOne(PickingSession, {
       orderId,
       status: 'in_progress',
-    });
+    }, { populate: ['items', 'user'] });
 
     if (!session) {
       return NextResponse.json(
@@ -43,12 +44,14 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       );
     }
 
+    const items = session.items.getItems();
+
     // Verificar que todo esté pickeado o marcado como faltante
-    const allAccounted = session.items.every(i => i.quantityPicked + (i.quantityMissing || 0) >= i.quantityRequired);
+    const allAccounted = items.every(i => i.quantityPicked + (i.quantityMissing || 0) >= i.quantityRequired);
     if (!allAccounted) {
-      const totalRequired = session.items.reduce((sum, i) => sum + i.quantityRequired, 0);
-      const totalPicked = session.items.reduce((sum, i) => sum + i.quantityPicked, 0);
-      const totalMissing = session.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
+      const totalRequired = items.reduce((sum, i) => sum + i.quantityRequired, 0);
+      const totalPicked = items.reduce((sum, i) => sum + i.quantityPicked, 0);
+      const totalMissing = items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
       return NextResponse.json(
         { success: false, error: `Faltan items (${totalPicked} pickeados + ${totalMissing} faltantes de ${totalRequired})` },
         { status: 400 }
@@ -65,22 +68,22 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     session.completedByName = user.name;
 
     // Si hay faltantes, marcar resolución como pendiente
-    const hasMissing = session.items.some(i => (i.quantityMissing || 0) > 0);
+    const hasMissing = items.some(i => (i.quantityMissing || 0) > 0);
     if (hasMissing) {
       session.faltanteResolution = 'pending';
     }
 
-    await session.save();
+    await em.flush();
 
-    const totalMissing = session.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
-    const missingItems = session.items
+    const totalMissing = items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
+    const missingItems = items
       .filter(i => (i.quantityMissing || 0) > 0)
       .map(i => ({ lineItemId: i.lineItemId, sku: i.sku, barcode: i.barcode, quantityMissing: i.quantityMissing }));
 
     audit({
       action: 'session_complete',
       userName: user.name,
-      userId: user._id.toString(),
+      userId: user.id,
       orderId,
       orderDisplayId: session.orderDisplayId,
       details: `Picking completado en ${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s (${session.totalPicked} items${totalMissing > 0 ? `, ${totalMissing} faltantes` : ''})`,
@@ -104,7 +107,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         // Crear fulfillment con todos los items (no hay faltantes)
         const fulfillmentItems = order.items
           .map((item: any) => {
-            const sessionItem = session.items.find(si => si.lineItemId === item.id);
+            const sessionItem = items.find(si => si.lineItemId === item.id);
             const pickedQty = sessionItem ? sessionItem.quantityPicked : item.quantity;
             return { id: item.id, quantity: pickedQty };
           })
@@ -123,7 +126,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         audit({
           action: 'fulfillment_create',
           userName: user.name,
-          userId: user._id.toString(),
+          userId: user.id,
           orderId,
           orderDisplayId: session.orderDisplayId,
           details: `Fulfillment creado en Medusa para pedido #${session.orderDisplayId}`,
@@ -136,7 +139,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         audit({
           action: 'fulfillment_error',
           userName: user.name,
-          userId: user._id.toString(),
+          userId: user.id,
           orderId,
           orderDisplayId: session.orderDisplayId,
           details: `Error fulfillment: ${fulfillmentError}`,
@@ -156,7 +159,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       message: fulfillmentCreated
         ? 'Picking completado y pedido marcado como preparado'
         : 'Picking completado pero hubo un error al actualizar Medusa',
-      sessionId: session._id,
+      sessionId: session.id,
       orderId,
       durationSeconds,
       durationFormatted,

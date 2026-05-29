@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { ApiKey, audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { ApiKey } from '@/lib/entities';
+import { audit } from '@/lib/audit';
 import { generateApiKey } from '@/lib/auth';
 
 // GET /api/admin/api-keys - Listar API keys (parcialmente enmascaradas)
 export async function GET() {
   try {
-    await connectDB();
-    const keys = await ApiKey.find().sort({ createdAt: -1 }).lean();
+    const em = await getEm();
+    const keys = await em.find(ApiKey, {}, { orderBy: { createdAt: 'DESC' } });
 
     const masked = keys.map(k => ({
-      id: k._id,
+      id: k.id,
       name: k.name,
       // Mostrar solo los primeros 7 y últimos 4 caracteres
       key: k.key.slice(0, 7) + '...' + k.key.slice(-4),
@@ -33,7 +34,7 @@ export async function GET() {
 // POST /api/admin/api-keys - Crear nueva API key
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { name } = await req.json();
 
     if (!name || name.trim().length < 2) {
@@ -45,12 +46,13 @@ export async function POST(req: NextRequest) {
 
     const key = generateApiKey();
 
-    const apiKey = await ApiKey.create({
+    const apiKey = em.create(ApiKey, {
       key,
       name: name.trim(),
       active: true,
       createdByName: 'Admin',
     });
+    await em.persistAndFlush(apiKey);
 
     audit({
       action: 'api_key_create',
@@ -63,7 +65,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       apiKey: {
-        id: apiKey._id,
+        id: apiKey.id,
         name: apiKey.name,
         key, // Key completa - mostrar una sola vez
         active: apiKey.active,
@@ -83,7 +85,7 @@ export async function POST(req: NextRequest) {
 // DELETE /api/admin/api-keys - Revocar API key
 export async function DELETE(req: NextRequest) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { id } = await req.json();
 
     if (!id) {
@@ -93,7 +95,7 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    const apiKey = await ApiKey.findById(id);
+    const apiKey = await em.findOne(ApiKey, { id });
     if (!apiKey) {
       return NextResponse.json(
         { success: false, error: 'API key no encontrada' },
@@ -102,7 +104,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     apiKey.active = false;
-    await apiKey.save();
+    await em.flush();
 
     audit({
       action: 'api_key_revoke',

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingUser, hashPin, audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { User } from '@/lib/entities';
+import { audit } from '@/lib/audit';
+import { hashPin } from '@/lib/pin';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 const ADMIN_PIN = process.env.ADMIN_PIN;
@@ -18,7 +20,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await connectDB();
+    const em = await getEm();
     const { pin } = await req.json();
 
     if (!pin || !/^\d{4,6}$/.test(pin)) {
@@ -40,7 +42,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const user = await PickingUser.findOne({
+    const user = await em.findOne(User, {
       pin: hashPin(pin),
       role: 'picker',
       active: true,
@@ -59,7 +61,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       user: {
-        id: user._id,
+        id: user.id,
         name: user.name,
       },
       requirePinChange,
@@ -75,7 +77,7 @@ export async function POST(req: NextRequest) {
 // PUT /api/picking/auth - Cambiar PIN
 export async function PUT(req: NextRequest) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { userId, currentPin, newPin } = await req.json();
 
     if (!userId || !currentPin || !newPin) {
@@ -93,8 +95,8 @@ export async function PUT(req: NextRequest) {
     }
 
     // Verificar que el usuario existe y el PIN actual es correcto
-    const user = await PickingUser.findOne({
-      _id: userId,
+    const user = await em.findOne(User, {
+      id: userId,
       pin: hashPin(currentPin),
       active: true,
     });
@@ -107,9 +109,9 @@ export async function PUT(req: NextRequest) {
     }
 
     // Verificar que el nuevo PIN no esté en uso
-    const existing = await PickingUser.findOne({
+    const existing = await em.findOne(User, {
       pin: hashPin(newPin),
-      _id: { $ne: userId },
+      id: { $ne: userId },
     });
     if (existing) {
       return NextResponse.json(
@@ -120,12 +122,12 @@ export async function PUT(req: NextRequest) {
 
     // Actualizar PIN
     user.pin = hashPin(newPin);
-    await user.save();
+    await em.flush();
 
     audit({
       action: 'user_update',
       userName: user.name,
-      userId: user._id.toString(),
+      userId: user.id,
       details: `PIN actualizado a 6 dígitos por el usuario`,
     });
 

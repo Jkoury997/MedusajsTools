@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaidOrders } from '@/lib/medusa';
-import { connectDB } from '@/lib/mongodb/connection';
-import { StoreDelivery } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { StoreDelivery } from '@/lib/entities';
 
 // GET /api/picking/store-orders?storeId=xxx - Pedidos de retiro para una tienda
 export async function GET(req: NextRequest) {
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    await connectDB();
+    const em = await getEm();
 
     // Traer pedidos fulfilled (para enviar) y shipped (enviados)
     const [fulfilled, shipped] = await Promise.all([
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
 
     // Consultar entregas en MongoDB para estos pedidos
     const orderIds = storeOrders.map((o: any) => o.id);
-    const deliveries = await StoreDelivery.find({ orderId: { $in: orderIds } }).lean();
+    const deliveries = await em.find(StoreDelivery, { orderId: { $in: orderIds } });
     const deliveredSet = new Set(deliveries.map((d: any) => d.orderId));
 
     // Enriquecer pedidos: si MongoDB dice entregado pero Medusa no actualizó, marcarlo

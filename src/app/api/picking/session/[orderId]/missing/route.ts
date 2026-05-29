@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession, audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { PickingSession } from '@/lib/entities';
+import { audit } from '@/lib/audit';
 
 interface RouteParams {
   params: Promise<{ orderId: string }>;
@@ -9,7 +10,7 @@ interface RouteParams {
 // POST /api/picking/session/:orderId/missing - Marcar item como faltante
 export async function POST(req: NextRequest, { params }: RouteParams) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { orderId } = await params;
     const { lineItemId, quantity } = await req.json();
 
@@ -20,10 +21,10 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const session = await PickingSession.findOne({
+    const session = await em.findOne(PickingSession, {
       orderId,
       status: 'in_progress',
-    });
+    }, { populate: ['items', 'user'] });
 
     if (!session) {
       return NextResponse.json(
@@ -32,7 +33,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const item = session.items.find(i => i.lineItemId === lineItemId);
+    const items = session.items.getItems();
+    const item = items.find(i => i.lineItemId === lineItemId);
     if (!item) {
       return NextResponse.json(
         { success: false, error: 'Item no encontrado' },
@@ -47,20 +49,20 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     item.quantityMissing = missingQty;
 
     // Recalcular totales
-    session.totalMissing = session.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
+    session.totalMissing = items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
 
-    await session.save();
+    await em.flush();
 
-    const totalRequired = session.items.reduce((sum, i) => sum + i.quantityRequired, 0);
+    const totalRequired = items.reduce((sum, i) => sum + i.quantityRequired, 0);
     const totalPicked = session.totalPicked;
     const totalMissing = session.totalMissing;
-    const isComplete = session.items.every(i => i.quantityPicked + (i.quantityMissing || 0) >= i.quantityRequired);
+    const isComplete = items.every(i => i.quantityPicked + (i.quantityMissing || 0) >= i.quantityRequired);
     const elapsed = Math.round((Date.now() - session.startedAt.getTime()) / 1000);
 
     audit({
       action: 'item_missing',
       userName: session.userName,
-      userId: session.userId?.toString(),
+      userId: session.user.id,
       orderId,
       orderDisplayId: session.orderDisplayId,
       details: `Item ${item.sku || item.barcode || item.lineItemId} marcado como faltante (${missingQty} unidades)`,
@@ -76,8 +78,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         quantityRequired: item.quantityRequired,
       },
       session: {
-        id: session._id,
-        items: session.items,
+        id: session.id,
+        items,
         totalRequired,
         totalPicked,
         totalMissing,

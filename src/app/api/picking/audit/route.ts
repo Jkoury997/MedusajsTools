@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { AuditLog } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { AuditLog } from '@/lib/entities';
 
 // GET /api/picking/audit - Obtener log de auditoria
 export async function GET(req: NextRequest) {
   try {
-    await connectDB();
+    const em = await getEm();
 
     const { searchParams } = new URL(req.url);
     const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 500);
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     const query: Record<string, any> = {};
 
     if (action) query.action = action;
-    if (userName) query.userName = { $regex: userName, $options: 'i' };
+    if (userName) query.userName = { $ilike: `%${userName}%` };
     if (orderId) query.orderId = orderId;
     if (dateFrom || dateTo) {
       query.createdAt = {};
@@ -29,21 +29,22 @@ export async function GET(req: NextRequest) {
     }
 
     const [logs, total] = await Promise.all([
-      AuditLog.find(query)
-        .sort({ createdAt: -1 })
-        .skip(offset)
-        .limit(limit)
-        .lean(),
-      AuditLog.countDocuments(query),
+      em.find(AuditLog, query, {
+        orderBy: { createdAt: 'DESC' },
+        offset,
+        limit,
+        populate: ['user'],
+      }),
+      em.count(AuditLog, query),
     ]);
 
     return NextResponse.json({
       success: true,
       logs: logs.map(l => ({
-        _id: l._id,
+        _id: l.id,
         action: l.action,
         userName: l.userName,
-        userId: l.userId,
+        userId: l.user?.id,
         orderId: l.orderId,
         orderDisplayId: l.orderDisplayId,
         details: l.details,

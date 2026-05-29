@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingUser, PickingSession, hashPin, audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { User, PickingSession } from '@/lib/entities';
+import { audit } from '@/lib/audit';
+import { hashPin } from '@/lib/pin';
 
 interface RouteParams {
   params: Promise<{ userId: string }>;
@@ -9,10 +11,10 @@ interface RouteParams {
 // GET /api/picking/users/:userId - Usuario con estadísticas
 export async function GET(req: NextRequest, { params }: RouteParams) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { userId } = await params;
 
-    const user = await PickingUser.findById(userId).select('-pin');
+    const user = await em.findOne(User, { id: userId });
     if (!user) {
       return NextResponse.json(
         { success: false, error: 'Usuario no encontrado' },
@@ -21,7 +23,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     }
 
     // Estadísticas
-    const sessions = await PickingSession.find({ userId: user._id });
+    const sessions = await em.find(PickingSession, { user: user.id });
     const completed = sessions.filter(s => s.status === 'completed');
     const totalDuration = completed.reduce((sum, s) => sum + (s.durationSeconds || 0), 0);
     const totalItems = completed.reduce((sum, s) => sum + s.totalPicked, 0);
@@ -29,7 +31,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({
       success: true,
       user: {
-        id: user._id,
+        id: user.id,
         name: user.name,
         active: user.active,
         createdAt: user.createdAt,
@@ -41,7 +43,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
         avgDurationSeconds: completed.length > 0 ? Math.round(totalDuration / completed.length) : 0,
       },
       recentSessions: completed.slice(-10).reverse().map(s => ({
-        id: s._id,
+        id: s.id,
         orderDisplayId: s.orderDisplayId,
         durationSeconds: s.durationSeconds,
         totalPicked: s.totalPicked,
@@ -59,7 +61,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 // PUT /api/picking/users/:userId - Actualizar usuario
 export async function PUT(req: NextRequest, { params }: RouteParams) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { userId } = await params;
     const { name, pin, active, role, storeId, storeName } = await req.json();
 
@@ -82,7 +84,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
           { status: 400 }
         );
       }
-      const existing = await PickingUser.findOne({ pin: hashPin(pin), _id: { $ne: userId } });
+      const existing = await em.findOne(User, { pin: hashPin(pin), id: { $ne: userId } });
       if (existing) {
         return NextResponse.json(
           { success: false, error: 'Este PIN ya está en uso' },
@@ -102,11 +104,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     if (storeId !== undefined) updateData.storeId = storeId?.trim() || '';
     if (storeName !== undefined) updateData.storeName = storeName?.trim() || '';
 
-    const user = await PickingUser.findByIdAndUpdate(
-      userId,
-      updateData,
-      { new: true }
-    ).select('-pin');
+    const user = await em.findOne(User, { id: userId });
 
     if (!user) {
       return NextResponse.json(
@@ -114,6 +112,9 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
         { status: 404 }
       );
     }
+
+    em.assign(user, updateData);
+    await em.flush();
 
     const changes = Object.keys(updateData).filter(k => k !== 'pin').map(k => `${k}=${updateData[k]}`).join(', ');
     const pinChanged = 'pin' in updateData;
@@ -124,7 +125,8 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       metadata: { targetUserId: userId, targetUserName: user.name, changes: Object.keys(updateData) },
     });
 
-    return NextResponse.json({ success: true, user });
+    const { pin: _pin, ...userWithoutPin } = user;
+    return NextResponse.json({ success: true, user: userWithoutPin });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: 'Error al actualizar' },
@@ -136,12 +138,12 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
 // DELETE /api/picking/users/:userId - Eliminar usuario
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { userId } = await params;
 
     // Verificar que no tenga sesiones de picking activas
-    const activeSessions = await PickingSession.findOne({
-      userId,
+    const activeSessions = await em.findOne(PickingSession, {
+      user: userId,
       status: 'in_progress',
     });
 
@@ -152,7 +154,7 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const user = await PickingUser.findByIdAndDelete(userId);
+    const user = await em.findOne(User, { id: userId });
 
     if (!user) {
       return NextResponse.json(
@@ -160,6 +162,8 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
         { status: 404 }
       );
     }
+
+    await em.nativeDelete(User, { id: userId });
 
     audit({
       action: 'user_delete',

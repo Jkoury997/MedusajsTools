@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession, StoreShipment } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { PickingSession, StoreShipment } from '@/lib/entities';
 import { getAllPaidOrders, isCashPayment, isMercadoLibreOrder } from '@/lib/medusa';
 
 // GET /api/gestion?tab=por-preparar|preparados|faltantes|por-enviar|enviados
@@ -8,15 +8,17 @@ export async function GET(req: NextRequest) {
   try {
     const tab = req.nextUrl.searchParams.get('tab') || 'por-preparar';
 
-    await connectDB();
+    const em = await getEm();
 
     // Obtener todos los pedidos pagados de Medusa
     const allOrders = await getAllPaidOrders();
 
     // Obtener todas las sesiones (completadas + en progreso)
-    const allSessions = await PickingSession.find({ status: { $in: ['completed', 'in_progress'] } })
-      .select('orderId orderDisplayId status totalRequired totalPicked totalMissing packed packedAt userName completedAt durationSeconds faltanteResolution faltanteResolvedAt faltanteNotes items startedAt')
-      .lean();
+    const allSessions = await em.find(
+      PickingSession,
+      { status: { $in: ['completed', 'in_progress'] } },
+      { populate: ['items'] }
+    );
 
     const completedSessionMap = new Map<string, any>();
     const inProgressSessionMap = new Map<string, any>();
@@ -29,7 +31,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Obtener todos los envíos a tienda (StoreShipment) para saber qué pedidos fueron enviados a tienda
-    const allStoreShipments = await StoreShipment.find({}).select('orderId shippedAt storeName').lean();
+    const allStoreShipments = await em.find(StoreShipment, {});
     const storeShipmentMap = new Map<string, any>();
     for (const ss of allStoreShipments) {
       storeShipmentMap.set(ss.orderId, ss);
@@ -105,8 +107,8 @@ export async function GET(req: NextRequest) {
           faltanteResolution: completedSession.faltanteResolution,
           faltanteResolvedAt: completedSession.faltanteResolvedAt,
           faltanteNotes: completedSession.faltanteNotes,
-          missingItems: completedSession.items
-            ?.filter((i: any) => {
+          missingItems: completedSession.items.getItems()
+            .filter((i: any) => {
               const missing = i.quantityMissing || 0;
               const received = i.quantityReceived || 0;
               // Solo mostrar items que aún no fueron recibidos completamente

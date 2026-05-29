@@ -6,8 +6,8 @@ import FaltanteReceiveInterface from './FaltanteReceiveInterface';
 import StoreLabel from './StoreLabel';
 import DeliverButton from './DeliverButton';
 import { isFactoryPickup as checkFactoryPickup, isStorePickup as checkStorePickup } from '@/lib/shipping';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession, StoreShipment } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { PickingSession, StoreShipment } from '@/lib/entities';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -414,13 +414,13 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
 
   // Verificar si hay una sesión completada con faltantes para este pedido
   let hasCompletedSessionWithFaltantes = false;
+  const em = await getEm();
   try {
-    await connectDB();
-    const completedSession = await PickingSession.findOne({
+    const completedSession = await em.findOne(PickingSession, {
       orderId: order.id,
       status: 'completed',
-      'items.quantityMissing': { $gt: 0 },
-    }).select('faltanteResolution').lean();
+      items: { quantityMissing: { $gt: 0 } },
+    });
 
     if (completedSession && ['pending', 'waiting'].includes(completedSession.faltanteResolution || '')) {
       hasCompletedSessionWithFaltantes = true;
@@ -438,7 +438,7 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
   let orderIsSentToStore = false;
   if (orderIsStorePickup) {
     try {
-      const storeShipment = await StoreShipment.findOne({ orderId: order.id }).lean();
+      const storeShipment = await em.findOne(StoreShipment, { orderId: order.id });
       orderIsSentToStore = !!storeShipment;
     } catch (e) {
       console.error('Error checking store shipment:', e);

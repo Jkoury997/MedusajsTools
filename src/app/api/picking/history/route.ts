@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { PickingSession } from '@/lib/entities';
 
 // GET /api/picking/history - Obtener historial de pickings con métricas completas
 export async function GET(req: NextRequest) {
   try {
-    await connectDB();
+    const em = await getEm();
 
     const { searchParams } = new URL(req.url);
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200);
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const query: Record<string, any> = { status: { $in: ['completed', 'cancelled'] } };
 
-    if (userId) query.userId = userId;
+    if (userId) query.user = userId;
     if (dateFrom || dateTo) {
       query.completedAt = {};
       if (dateFrom) query.completedAt.$gte = new Date(dateFrom);
@@ -32,66 +32,123 @@ export async function GET(req: NextRequest) {
       if (dateTo) dateMatch.completedAt.$lte = new Date(dateTo + 'T23:59:59.999Z');
     }
 
-    const [sessions, total, globalStats, pickerStats, cancelStats] = await Promise.all([
+    const [sessions, total, completedSessions, cancelledSessions] = await Promise.all([
       // 1. Sesiones paginadas
-      PickingSession.find(query)
-        .sort({ completedAt: -1 })
-        .skip(offset)
-        .limit(limit)
-        .lean(),
+      em.find(PickingSession, query, {
+        orderBy: { completedAt: 'DESC' },
+        offset,
+        limit,
+        populate: ['items', 'user'],
+      }),
 
       // 2. Conteo total
-      PickingSession.countDocuments(query),
+      em.count(PickingSession, query),
 
-      // 3. Stats globales del período (solo completados)
-      PickingSession.aggregate([
-        { $match: { status: 'completed', ...dateMatch } },
-        {
-          $group: {
-            _id: null,
-            count: { $sum: 1 },
-            avgDuration: { $avg: '$durationSeconds' },
-            totalDuration: { $sum: '$durationSeconds' },
-            totalItemsPicked: { $sum: '$totalPicked' },
-            totalItemsRequired: { $sum: '$totalRequired' },
-            minDuration: { $min: '$durationSeconds' },
-            maxDuration: { $max: '$durationSeconds' },
-          },
-        },
-      ]),
+      // 3 + 4. Sesiones completadas del período (para stats globales y por picker)
+      em.find(PickingSession, { status: 'completed', ...dateMatch }, { populate: ['user'] }),
 
-      // 4. Stats por picker del período (completados)
-      PickingSession.aggregate([
-        { $match: { status: 'completed', ...dateMatch } },
-        {
-          $group: {
-            _id: { userId: '$userId', userName: '$userName' },
-            completedOrders: { $sum: 1 },
-            totalItemsPicked: { $sum: '$totalPicked' },
-            totalItemsRequired: { $sum: '$totalRequired' },
-            totalDuration: { $sum: '$durationSeconds' },
-            avgDuration: { $avg: '$durationSeconds' },
-            minDuration: { $min: '$durationSeconds' },
-            maxDuration: { $max: '$durationSeconds' },
-            firstPick: { $min: '$completedAt' },
-            lastPick: { $max: '$completedAt' },
-          },
-        },
-        { $sort: { totalItemsPicked: -1 } },
-      ]),
-
-      // 5. Stats de cancelaciones del período
-      PickingSession.aggregate([
-        { $match: { status: 'cancelled', ...dateMatch } },
-        {
-          $group: {
-            _id: { userId: '$userId', userName: '$userName' },
-            cancelledCount: { $sum: 1 },
-            reasons: { $push: '$cancelReason' },
-          },
-        },
-      ]),
+      // 5. Sesiones canceladas del período
+      em.find(PickingSession, { status: 'cancelled', ...dateMatch }, { populate: ['user'] }),
     ]);
+
+    // 3. Stats globales del período (solo completados) - agregación en JS
+    const globalStats = completedSessions.length > 0 ? [completedSessions.reduce(
+      (acc, s) => {
+        const d = s.durationSeconds ?? 0;
+        acc.count += 1;
+        acc.totalDuration += d;
+        acc.totalItemsPicked += s.totalPicked;
+        acc.totalItemsRequired += s.totalRequired;
+        acc.minDuration = acc.minDuration === null ? d : Math.min(acc.minDuration, d);
+        acc.maxDuration = acc.maxDuration === null ? d : Math.max(acc.maxDuration, d);
+        return acc;
+      },
+      {
+        _id: null as null,
+        count: 0,
+        avgDuration: 0,
+        totalDuration: 0,
+        totalItemsPicked: 0,
+        totalItemsRequired: 0,
+        minDuration: null as number | null,
+        maxDuration: null as number | null,
+      }
+    )] : [];
+    if (globalStats[0]) {
+      globalStats[0].avgDuration = globalStats[0].count > 0 ? globalStats[0].totalDuration / globalStats[0].count : 0;
+    }
+
+    // 4. Stats por picker del período (completados) - agregación en JS
+    const pickerStatsMap = new Map<string, {
+      _id: { userId: string; userName: string };
+      completedOrders: number;
+      totalItemsPicked: number;
+      totalItemsRequired: number;
+      totalDuration: number;
+      avgDuration: number;
+      minDuration: number | null;
+      maxDuration: number | null;
+      firstPick: Date | null;
+      lastPick: Date | null;
+    }>();
+    for (const s of completedSessions) {
+      const key = `${s.user.id}|${s.userName}`;
+      let g = pickerStatsMap.get(key);
+      if (!g) {
+        g = {
+          _id: { userId: s.user.id, userName: s.userName },
+          completedOrders: 0,
+          totalItemsPicked: 0,
+          totalItemsRequired: 0,
+          totalDuration: 0,
+          avgDuration: 0,
+          minDuration: null,
+          maxDuration: null,
+          firstPick: null,
+          lastPick: null,
+        };
+        pickerStatsMap.set(key, g);
+      }
+      const d = s.durationSeconds ?? 0;
+      g.completedOrders += 1;
+      g.totalItemsPicked += s.totalPicked;
+      g.totalItemsRequired += s.totalRequired;
+      g.totalDuration += d;
+      g.minDuration = g.minDuration === null ? d : Math.min(g.minDuration, d);
+      g.maxDuration = g.maxDuration === null ? d : Math.max(g.maxDuration, d);
+      const cAt = s.completedAt ?? null;
+      if (cAt) {
+        if (g.firstPick === null || cAt < g.firstPick) g.firstPick = cAt;
+        if (g.lastPick === null || cAt > g.lastPick) g.lastPick = cAt;
+      }
+    }
+    const pickerStats = Array.from(pickerStatsMap.values()).map(g => ({
+      ...g,
+      avgDuration: g.completedOrders > 0 ? g.totalDuration / g.completedOrders : 0,
+    }));
+    pickerStats.sort((a, b) => b.totalItemsPicked - a.totalItemsPicked);
+
+    // 5. Stats de cancelaciones del período - agregación en JS
+    const cancelStatsMap = new Map<string, {
+      _id: { userId: string; userName: string };
+      cancelledCount: number;
+      reasons: (string | undefined)[];
+    }>();
+    for (const s of cancelledSessions) {
+      const key = `${s.user.id}|${s.userName}`;
+      let c = cancelStatsMap.get(key);
+      if (!c) {
+        c = {
+          _id: { userId: s.user.id, userName: s.userName },
+          cancelledCount: 0,
+          reasons: [],
+        };
+        cancelStatsMap.set(key, c);
+      }
+      c.cancelledCount += 1;
+      c.reasons.push(s.cancelReason);
+    }
+    const cancelStats = Array.from(cancelStatsMap.values());
 
     // Procesar stats globales
     const gs = globalStats[0] || {
@@ -112,7 +169,7 @@ export async function GET(req: NextRequest) {
     for (const c of cancelStats) {
       cancelMap.set(c._id.userName, {
         cancelledCount: c.cancelledCount,
-        reasons: c.reasons.filter(Boolean),
+        reasons: c.reasons.filter(Boolean) as string[],
       });
     }
 
@@ -124,10 +181,10 @@ export async function GET(req: NextRequest) {
       totalItemsRequired: number;
       totalDuration: number;
       avgDuration: number;
-      minDuration: number;
-      maxDuration: number;
-      firstPick: Date;
-      lastPick: Date;
+      minDuration: number | null;
+      maxDuration: number | null;
+      firstPick: Date | null;
+      lastPick: Date | null;
     }) => {
       const cancels = cancelMap.get(p._id.userName) || { cancelledCount: 0, reasons: [] };
       const totalOrders = p.completedOrders + cancels.cancelledCount;
@@ -191,7 +248,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       sessions: sessions.map(s => ({
-        _id: s._id,
+        _id: s.id,
         orderId: s.orderId,
         orderDisplayId: s.orderDisplayId,
         status: s.status,
@@ -204,7 +261,7 @@ export async function GET(req: NextRequest) {
         totalPicked: s.totalPicked,
         cancelReason: s.cancelReason,
         cancelledAt: s.cancelledAt,
-        items: s.items,
+        items: s.items.getItems(),
       })),
       total,
       // Stats globales del período

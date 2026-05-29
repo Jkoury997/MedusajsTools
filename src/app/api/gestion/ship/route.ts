@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
-import { connectDB } from '@/lib/mongodb/connection';
-import { audit, StoreShipment } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { StoreShipment } from '@/lib/entities';
+import { audit } from '@/lib/audit';
 import { isStorePickup } from '@/lib/shipping';
 
 // POST /api/gestion/ship - Marcar pedido como enviado (crear shipment)
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { orderId, orderDisplayId } = await req.json();
 
     if (!orderId) {
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
 
     // Verificar si ya fue enviado a tienda (para store pickup)
     if (isStorePickup(shippingOptionId)) {
-      const existingShipment = await StoreShipment.findOne({ orderId });
+      const existingShipment = await em.findOne(StoreShipment, { orderId });
       if (existingShipment) {
         return NextResponse.json(
           { success: false, error: 'Este pedido ya fue enviado a la tienda' },
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest) {
     if (isStorePickup(shippingOptionId)) {
       const storeData = shippingMethod?.data?.store;
 
-      await StoreShipment.create({
+      const shipment = em.create(StoreShipment, {
         orderId,
         orderDisplayId: orderDisplayId || 0,
         storeId: storeData?.id || '',
@@ -70,6 +71,7 @@ export async function POST(req: NextRequest) {
         shippedByName: 'Gestión',
         shippedAt: new Date(),
       });
+      await em.persistAndFlush(shipment);
 
       invalidateOrdersCache();
 

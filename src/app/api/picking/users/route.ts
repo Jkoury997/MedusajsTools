@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingUser, hashPin, audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { User } from '@/lib/entities';
+import { audit } from '@/lib/audit';
+import { hashPin } from '@/lib/pin';
 
 // GET /api/picking/users - Listar usuarios
 export async function GET(req: NextRequest) {
   try {
-    await connectDB();
+    const em = await getEm();
     const includeInactive = req.nextUrl.searchParams.get('all') === 'true';
 
     const filter = includeInactive ? {} : { active: true };
-    const users = await PickingUser.find(filter)
-      .select('-pin')
-      .sort({ name: 1 });
+    const found = await em.find(User, filter, { orderBy: { name: 'ASC' } });
+    const users = found.map(({ pin: _pin, ...rest }) => rest);
 
     return NextResponse.json({ success: true, users });
   } catch (error) {
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
 // POST /api/picking/users - Crear usuario
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { name, pin, role, storeId, storeName } = await req.json();
 
     if (!name?.trim()) {
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Verificar que el PIN no exista
-    const existing = await PickingUser.findOne({ pin: hashPin(pin) });
+    const existing = await em.findOne(User, { pin: hashPin(pin) });
     if (existing) {
       return NextResponse.json(
         { success: false, error: 'Este PIN ya está en uso' },
@@ -61,25 +62,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const user = await PickingUser.create({
+    const user = em.create(User, {
       name: name.trim(),
       pin: hashPin(pin),
       active: true,
       role: userRole,
       ...(userRole === 'store' ? { storeId: storeId.trim(), storeName: storeName.trim() } : {}),
     });
+    await em.persistAndFlush(user);
 
     audit({
       action: 'user_create',
       userName: 'Admin',
       details: `Usuario creado: ${user.name} (${userRole}${userRole === 'store' ? ` - ${storeName}` : ''})`,
-      metadata: { newUserId: user._id.toString(), newUserName: user.name, role: userRole, storeName: storeName || undefined },
+      metadata: { newUserId: user.id, newUserName: user.name, role: userRole, storeName: storeName || undefined },
     });
 
     return NextResponse.json({
       success: true,
       user: {
-        id: user._id,
+        id: user.id,
         name: user.name,
         active: user.active,
         createdAt: user.createdAt,

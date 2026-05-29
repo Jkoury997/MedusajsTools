@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingUser, StoreDelivery, StoreShipment, audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { User, StoreDelivery, StoreShipment } from '@/lib/entities';
+import { audit } from '@/lib/audit';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
 import { isFactoryPickup, isStorePickup as checkStorePickup } from '@/lib/shipping';
 
 // POST /api/picking/deliver - Marcar pedido como entregado en tienda
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { orderId, orderDisplayId, userId } = await req.json();
 
     if (!orderId || !userId) {
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
       userName = 'Admin';
       userRole = 'admin';
     } else {
-      const user = await PickingUser.findById(userId);
+      const user = await em.findOne(User, { id: userId });
       if (!user || !user.active || (user.role !== 'store' && user.role !== 'picker')) {
         return NextResponse.json(
           { success: false, error: 'Usuario no autorizado' },
@@ -39,11 +40,11 @@ export async function POST(req: NextRequest) {
       userRole = user.role;
       userStoreId = user.storeId || '';
       userStoreName = user.storeName || '';
-      userIdStr = user._id.toString();
+      userIdStr = user.id;
     }
 
     // Verificar que no se haya entregado ya
-    const existing = await StoreDelivery.findOne({ orderId });
+    const existing = await em.findOne(StoreDelivery, { orderId });
     if (existing) {
       return NextResponse.json(
         { success: false, error: `Este pedido ya fue entregado el ${existing.deliveredAt.toLocaleDateString('es-AR')} por ${existing.deliveredByName}` },
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest) {
 
       // Para retiro en tienda, verificar que el pedido haya sido enviado a la tienda
       if (checkStorePickup(shippingOptionId)) {
-        const storeShipment = await StoreShipment.findOne({ orderId });
+        const storeShipment = await em.findOne(StoreShipment, { orderId });
         if (!storeShipment) {
           return NextResponse.json(
             { success: false, error: 'Este pedido aún no fue enviado a la tienda' },
@@ -128,16 +129,17 @@ export async function POST(req: NextRequest) {
     }
 
     // Registrar entrega en MongoDB
-    const delivery = await StoreDelivery.create({
+    const delivery = em.create(StoreDelivery, {
       orderId,
       orderDisplayId: orderDisplayId || 0,
       storeId: userStoreId,
       storeName: userStoreName,
-      deliveredByUserId: userIdStr,
+      deliveredBy: em.getReference(User, userIdStr),
       deliveredByName: userName,
       deliveredAt: new Date(),
       shipmentCreated: delivered,
     });
+    await em.persistAndFlush(delivery);
 
     // Invalidar cache de pedidos
     invalidateOrdersCache();
@@ -156,7 +158,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       delivery: {
-        id: delivery._id,
+        id: delivery.id,
         deliveredAt: delivery.deliveredAt,
         deliveredByName: delivery.deliveredByName,
         storeName: delivery.storeName,

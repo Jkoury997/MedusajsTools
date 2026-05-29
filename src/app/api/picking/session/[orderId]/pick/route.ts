@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession, audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { PickingSession } from '@/lib/entities';
+import { audit } from '@/lib/audit';
 
 interface RouteParams {
   params: Promise<{ orderId: string }>;
@@ -9,14 +10,14 @@ interface RouteParams {
 // POST /api/picking/session/:orderId/pick - Pickear item (+1)
 export async function POST(req: NextRequest, { params }: RouteParams) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { orderId } = await params;
     const { lineItemId, barcode, method } = await req.json();
 
-    const session = await PickingSession.findOne({
+    const session = await em.findOne(PickingSession, {
       orderId,
       status: 'in_progress',
-    });
+    }, { populate: ['items', 'user'] });
 
     if (!session) {
       return NextResponse.json(
@@ -25,18 +26,20 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       );
     }
 
+    const items = session.items.getItems();
+
     // Buscar el item
     let item;
     if (method === 'barcode' && barcode) {
-      item = session.items.find(i => i.barcode === barcode);
+      item = items.find(i => i.barcode === barcode);
     } else if (lineItemId) {
-      item = session.items.find(i => i.lineItemId === lineItemId);
+      item = items.find(i => i.lineItemId === lineItemId);
     }
 
     if (!item) {
       if (method === 'barcode') {
         // Build a helpful error message showing which barcodes exist
-        const availableBarcodes = session.items
+        const availableBarcodes = items
           .filter(i => i.barcode && i.quantityPicked < i.quantityRequired)
           .map(i => i.barcode);
         const errorMsg = availableBarcodes.length > 0
@@ -66,27 +69,27 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     item.pickedAt = new Date();
     item.scanMethod = method || 'manual';
 
-    session.totalPicked = session.items.reduce((sum, i) => sum + i.quantityPicked, 0);
+    session.totalPicked = items.reduce((sum, i) => sum + i.quantityPicked, 0);
 
-    await session.save();
+    await em.flush();
 
-    const totalRequired = session.items.reduce((sum, i) => sum + i.quantityRequired, 0);
+    const totalRequired = items.reduce((sum, i) => sum + i.quantityRequired, 0);
     const totalPicked = session.totalPicked;
-    const totalMissing = session.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
-    const isComplete = session.items.every(i => i.quantityPicked + (i.quantityMissing || 0) >= i.quantityRequired);
+    const totalMissing = items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
+    const isComplete = items.every(i => i.quantityPicked + (i.quantityMissing || 0) >= i.quantityRequired);
     const elapsed = Math.round((Date.now() - session.startedAt.getTime()) / 1000);
 
     // Si se pickea un item que tenía faltantes, resetear faltante
     if (item.quantityMissing && item.quantityPicked + (item.quantityMissing || 0) > item.quantityRequired) {
       item.quantityMissing = Math.max(0, item.quantityRequired - item.quantityPicked);
-      session.totalMissing = session.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
-      await session.save();
+      session.totalMissing = items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
+      await em.flush();
     }
 
     audit({
       action: 'item_pick',
       userName: session.userName,
-      userId: session.userId?.toString(),
+      userId: session.user?.id,
       orderId,
       orderDisplayId: session.orderDisplayId,
       details: `Pick item ${item.barcode || item.sku || item.lineItemId} (${item.quantityPicked}/${item.quantityRequired}) via ${method || 'manual'}`,
@@ -101,8 +104,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         quantityRequired: item.quantityRequired,
       },
       session: {
-        id: session._id,
-        items: session.items,
+        id: session.id,
+        items,
         totalRequired,
         totalPicked,
         totalMissing,

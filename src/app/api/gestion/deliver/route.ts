@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
-import { connectDB } from '@/lib/mongodb/connection';
-import { audit } from '@/lib/mongodb/models';
+import { audit } from '@/lib/audit';
 
 // POST /api/gestion/deliver - Marcar pedido como entregado
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
     const { orderId, orderDisplayId } = await req.json();
 
     if (!orderId) {
