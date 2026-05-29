@@ -38,8 +38,11 @@ export class AuditLog {
   createdAt: Date = new Date();
 }
 
+Object.defineProperty(AuditLog, 'name', { value: 'AuditLog' });
+
 export const AuditLogSchema = new EntitySchema<AuditLog>({
   class: AuditLog,
+  name: 'AuditLog',
   tableName: 'audit_logs',
   properties: {
     id: { type: 'uuid', primary: true },

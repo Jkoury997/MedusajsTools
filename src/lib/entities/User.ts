@@ -20,8 +20,14 @@ export class User {
   updatedAt: Date = new Date();
 }
 
+// Fijar el nombre de la clase para que sobreviva la minificación del bundler
+// (si no, varias entidades colapsan al mismo nombre y MikroORM tira
+// "Duplicate entity names"). Debe ir ANTES de construir el EntitySchema.
+Object.defineProperty(User, 'name', { value: 'User' });
+
 export const UserSchema = new EntitySchema<User>({
   class: User,
+  name: 'User',
   tableName: 'users',
   properties: {
     id: { type: 'uuid', primary: true },

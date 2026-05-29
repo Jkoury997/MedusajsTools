@@ -16,8 +16,11 @@ export class ApiKey {
   updatedAt: Date = new Date();
 }
 
+Object.defineProperty(ApiKey, 'name', { value: 'ApiKey' });
+
 export const ApiKeySchema = new EntitySchema<ApiKey>({
   class: ApiKey,
+  name: 'ApiKey',
   tableName: 'api_keys',
   properties: {
     id: { type: 'uuid', primary: true },

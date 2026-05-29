@@ -15,8 +15,11 @@ export class StoreShipment {
   createdAt: Date = new Date();
 }
 
+Object.defineProperty(StoreShipment, 'name', { value: 'StoreShipment' });
+
 export const StoreShipmentSchema = new EntitySchema<StoreShipment>({
   class: StoreShipment,
+  name: 'StoreShipment',
   tableName: 'store_shipments',
   properties: {
     id: { type: 'uuid', primary: true },
