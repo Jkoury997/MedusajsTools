@@ -101,7 +101,9 @@ export default function AdminSeguridadPage() {
     { name: 'SESSION_SECRET', desc: 'Secreto para firmar tokens de sesión', example: 'mi-secreto-seguro-2024-xyz' },
     { name: 'STATS_API_KEY', desc: 'API key para endpoints de estadísticas', example: 'mk_xxxxx (usar key generada abajo)' },
     { name: 'STATS_CORS_ORIGIN', desc: 'Origen permitido para CORS en stats', example: 'https://mi-dashboard.com' },
-    { name: 'MONGODB_URI', desc: 'URI de conexión a MongoDB', example: 'mongodb+srv://...' },
+    { name: 'DATABASE_URL', desc: 'Conexión a PostgreSQL', example: 'postgresql://user:pass@host:5432/db' },
+    { name: 'MEDUSA_BACKEND_URL', desc: 'URL del backend de Medusa', example: 'https://backend.tu-dominio.com' },
+    { name: 'MEDUSA_SECRET_API_KEY', desc: 'Secret API key de Medusa (admin)', example: 'sk_xxxxx' },
   ];
 
   return (
