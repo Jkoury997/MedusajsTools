@@ -1,68 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-
-// === FEEDBACK: Sonido + Vibración ===
-function usePickingFeedback() {
-  const audioCtx = useRef<AudioContext | null>(null);
-
-  const getAudioCtx = useCallback(() => {
-    if (!audioCtx.current) {
-      audioCtx.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    return audioCtx.current;
-  }, []);
-
-  const playTone = useCallback((frequency: number, duration: number, type: OscillatorType = 'sine') => {
-    try {
-      const ctx = getAudioCtx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = type;
-      osc.frequency.value = frequency;
-      gain.gain.value = 0.3;
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + duration);
-    } catch {
-      // Audio no disponible
-    }
-  }, [getAudioCtx]);
-
-  const vibrate = useCallback((pattern: number | number[]) => {
-    try {
-      if (navigator.vibrate) navigator.vibrate(pattern);
-    } catch {
-      // Vibración no disponible
-    }
-  }, []);
-
-  const successFeedback = useCallback(() => {
-    // Beep agudo doble (éxito)
-    playTone(880, 0.1);
-    setTimeout(() => playTone(1320, 0.15), 100);
-    vibrate(100);
-  }, [playTone, vibrate]);
-
-  const errorFeedback = useCallback(() => {
-    // Buzz grave (error)
-    playTone(200, 0.3, 'square');
-    vibrate([100, 50, 100, 50, 200]);
-  }, [playTone, vibrate]);
-
-  const completeFeedback = useCallback(() => {
-    // Melodía de completado
-    playTone(523, 0.1);
-    setTimeout(() => playTone(659, 0.1), 120);
-    setTimeout(() => playTone(784, 0.1), 240);
-    setTimeout(() => playTone(1047, 0.2), 360);
-    vibrate([100, 50, 100, 50, 300]);
-  }, [playTone, vibrate]);
-
-  return { successFeedback, errorFeedback, completeFeedback };
-}
+import { useRouter } from 'next/navigation';
+import { useAudioFeedback } from '@/hooks/useAudioFeedback';
+import { AuthCard, PinInput, Button, Card, Badge, Alert, Modal } from '@/components/ui';
 
 interface PickingItem {
   lineItemId: string;
@@ -187,8 +128,13 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState('');
 
-  // Feedback sonido + vibración
-  const { successFeedback, errorFeedback, completeFeedback } = usePickingFeedback();
+  const router = useRouter();
+
+  // Feedback sonido + vibración (hook compartido)
+  const { success, error: errorFeedbackFn } = useAudioFeedback();
+  const successFeedback = success;
+  const errorFeedback = errorFeedbackFn;
+  const completeFeedback = success;
 
   // Timer
   useEffect(() => {
@@ -577,7 +523,7 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
         successFeedback();
         // Redirect to management page after brief feedback
         setTimeout(() => {
-          window.location.href = '/gestion';
+          router.push('/gestion');
         }, 1500);
       } else {
         setPickError(data.error || 'Error al empaquetar');
@@ -611,15 +557,12 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
   if (step === 'idle') {
     return (
       <div className="print:hidden mt-4">
-        <button
-          onClick={() => setStep('auth')}
-          className="w-full bg-blue-600 text-white py-4 rounded-xl text-lg font-bold flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors shadow-lg"
-        >
+        <Button onClick={() => setStep('auth')} fullWidth size="lg" className="shadow-lg">
           <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
           </svg>
           Iniciar Picking
-        </button>
+        </Button>
       </div>
     );
   }
@@ -628,53 +571,44 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
   if (step === 'auth') {
     return (
       <div className="print:hidden mt-4">
-        <div className="bg-white rounded-xl shadow-lg border p-5">
-          <div className="text-center mb-4">
-            <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2">
-              <svg className="w-7 h-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-            </div>
-            <h2 className="text-lg font-bold text-gray-900">Ingresá tu PIN</h2>
-            <p className="text-sm text-gray-500">Para empezar a armar el pedido #{orderDisplayId}</p>
-          </div>
-
+        <AuthCard
+          icon={
+            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+          }
+          title="Ingresá tu PIN"
+          subtitle={`Para empezar a armar el pedido #${orderDisplayId}`}
+        >
           <form onSubmit={handleAuth} className="space-y-3">
-            <input
-              type="password"
+            <PinInput
               value={pickerPin}
               onChange={(e) => setPickerPin(e.target.value.replace(/\D/g, ''))}
               placeholder="••••"
-              maxLength={6}
-              inputMode="numeric"
               autoFocus
-              className="w-full px-4 py-3 border-2 rounded-xl text-2xl text-center tracking-[0.5em] focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
 
-            {authError && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-center">
-                <span className="text-red-700 text-sm">{authError}</span>
-              </div>
-            )}
+            {authError && <Alert tone="error">{authError}</Alert>}
 
             <div className="flex gap-2">
-              <button
+              <Button
                 type="submit"
                 disabled={authLoading || pickerPin.length < 4}
-                className="flex-1 bg-blue-600 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50"
+                loading={authLoading}
+                fullWidth
               >
                 {authLoading ? 'Verificando...' : 'Empezar'}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="secondary"
                 onClick={() => { setStep('idle'); setPickerPin(''); setAuthError(''); }}
-                className="px-4 py-3 bg-gray-100 text-gray-700 rounded-xl text-sm"
               >
                 Cancelar
-              </button>
+              </Button>
             </div>
           </form>
-        </div>
+        </AuthCard>
       </div>
     );
   }
@@ -683,61 +617,48 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
   if (step === 'pinChange') {
     return (
       <div className="print:hidden mt-4">
-        <div className="bg-white rounded-xl shadow-lg border p-5">
-          <div className="text-center mb-4">
-            <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-2">
-              <svg className="w-7 h-7 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-            </div>
-            <h2 className="text-lg font-bold text-gray-900">Hola {userName}!</h2>
-            <p className="text-sm text-gray-500 mt-1">
-              Por seguridad, necesitás cambiar tu PIN a <strong>6 dígitos</strong>
-            </p>
-          </div>
-
+        <AuthCard
+          icon={
+            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          }
+          title={`Hola ${userName}!`}
+          subtitle="Por seguridad, necesitás cambiar tu PIN a 6 dígitos"
+        >
           <form onSubmit={handlePinChange} className="space-y-3">
             <div>
               <label className="text-xs font-medium text-gray-600">Nuevo PIN (6 dígitos)</label>
-              <input
-                type="password"
+              <PinInput
                 value={newPin}
                 onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
                 placeholder="••••••"
-                maxLength={6}
-                inputMode="numeric"
                 autoFocus
-                className="w-full mt-1 px-4 py-3 border-2 rounded-xl text-2xl text-center tracking-[0.5em] focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                className="mt-1"
               />
             </div>
             <div>
               <label className="text-xs font-medium text-gray-600">Repetir nuevo PIN</label>
-              <input
-                type="password"
+              <PinInput
                 value={confirmPin}
                 onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
                 placeholder="••••••"
-                maxLength={6}
-                inputMode="numeric"
-                className="w-full mt-1 px-4 py-3 border-2 rounded-xl text-2xl text-center tracking-[0.5em] focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                className="mt-1"
               />
             </div>
 
-            {pinChangeError && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-center">
-                <span className="text-red-700 text-sm">{pinChangeError}</span>
-              </div>
-            )}
+            {pinChangeError && <Alert tone="error">{pinChangeError}</Alert>}
 
-            <button
+            <Button
               type="submit"
               disabled={pinChangeLoading || newPin.length !== 6 || confirmPin.length !== 6}
-              className="w-full bg-amber-600 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 hover:bg-amber-700 transition-colors"
+              loading={pinChangeLoading}
+              fullWidth
             >
               {pinChangeLoading ? 'Guardando...' : 'Cambiar PIN y continuar'}
-            </button>
+            </Button>
           </form>
-        </div>
+        </AuthCard>
       </div>
     );
   }
@@ -813,15 +734,12 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
                 Resolvé los faltantes antes de marcar como listo para enviar
               </p>
             </div>
-            <button
-              onClick={() => { window.location.href = '/gestion'; }}
-              className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors"
-            >
+            <Button variant="secondary" onClick={() => router.push('/gestion')} fullWidth>
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
               Volver a pedidos
-            </button>
+            </Button>
           </div>
         ) : packed || completionResult.packed ? (
           <div className="space-y-3">
@@ -833,31 +751,25 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
                 <span className="text-indigo-800 font-bold text-lg">Listo para enviar</span>
               </div>
             </div>
-            <button
-              onClick={() => { window.location.href = '/gestion'; }}
-              className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors"
-            >
+            <Button variant="secondary" onClick={() => router.push('/gestion')} fullWidth>
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
               Volver a pedidos
-            </button>
+            </Button>
           </div>
         ) : (
           <div className="space-y-2">
-            <button
+            <Button
               onClick={handlePack}
               disabled={packing}
-              className="w-full bg-indigo-600 text-white py-4 rounded-xl text-lg font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-colors shadow-lg disabled:opacity-50"
+              loading={packing}
+              fullWidth
+              size="lg"
+              className="!bg-indigo-600 hover:!bg-indigo-700 shadow-lg"
             >
               {packing ? (
-                <>
-                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Marcando...
-                </>
+                'Marcando...'
               ) : (
                 <>
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -866,12 +778,8 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
                   Listo para Enviar
                 </>
               )}
-            </button>
-            {pickError && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
-                <p className="text-sm text-red-800 font-medium">{pickError}</p>
-              </div>
-            )}
+            </Button>
+            {pickError && <Alert tone="error">{pickError}</Alert>}
           </div>
         )}
       </div>
@@ -964,14 +872,7 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
       </div>
 
       {/* Error */}
-      {pickError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2">
-          <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span className="text-red-700 text-sm">{pickError}</span>
-        </div>
-      )}
+      {pickError && <Alert tone="error">{pickError}</Alert>}
 
       {/* Items list - Solo progreso, sin botones */}
       <div className="space-y-1.5">
@@ -1021,12 +922,12 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
                   </p>
                   <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                     <span className="text-xs text-gray-500 font-mono">{itemCode}</span>
-                    {size && <span className="text-xs px-1 py-0.5 bg-blue-100 text-blue-700 rounded">{size}</span>}
-                    {color && <span className="text-xs px-1 py-0.5 bg-gray-100 text-gray-700 rounded">{color}</span>}
+                    {size && <Badge tone="info">{size}</Badge>}
+                    {color && <Badge tone="gray">{color}</Badge>}
                     {isMissing && (
-                      <span className="text-xs px-1.5 py-0.5 bg-red-100 text-red-700 rounded font-bold">
+                      <Badge tone="danger">
                         {sessionItem.quantityMissing} faltante{(sessionItem.quantityMissing || 0) > 1 ? 's' : ''}
-                      </span>
+                      </Badge>
                     )}
                   </div>
                 </div>
@@ -1155,81 +1056,72 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
       </div>
 
       {/* Wrong Article Popup */}
-      {showWrongArticlePopup && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-10 h-10 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Artículo incorrecto</h3>
-            <p className="text-gray-500 text-sm mb-4">El código escaneado no corresponde a ningún artículo de este pedido.</p>
-            <button
-              onClick={() => { setShowWrongArticlePopup(false); barcodeRef.current?.focus(); }}
-              className="w-full py-3 bg-red-500 text-white rounded-xl font-bold text-sm active:bg-red-600"
-            >
-              Entendido
-            </button>
+      <Modal
+        open={showWrongArticlePopup}
+        onClose={() => { setShowWrongArticlePopup(false); barcodeRef.current?.focus(); }}
+      >
+        <div className="text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-10 h-10 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">Artículo incorrecto</h3>
+          <p className="text-gray-500 text-sm mb-4">El código escaneado no corresponde a ningún artículo de este pedido.</p>
+          <Button
+            variant="danger"
+            fullWidth
+            onClick={() => { setShowWrongArticlePopup(false); barcodeRef.current?.focus(); }}
+          >
+            Entendido
+          </Button>
         </div>
-      )}
+      </Modal>
 
       {/* Modal de cancelación con razón obligatoria */}
       {showCancelModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
-            <div className="p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">Cancelar Picking</h3>
-                  <p className="text-sm text-gray-500">Pedido #{orderDisplayId}</p>
-                </div>
-              </div>
-
-              <p className="text-sm text-gray-700 mb-3">
-                Escribí el motivo de la cancelación:
-              </p>
-
-              <textarea
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                placeholder="Ej: Producto sin stock, error en el pedido..."
-                rows={3}
-                autoFocus
-                className="w-full px-3 py-2 border-2 rounded-xl text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none"
-              />
-
-              {cancelError && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-2 mt-2">
-                  <span className="text-red-700 text-xs">{cancelError}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex border-t">
-              <button
-                onClick={() => setShowCancelModal(false)}
-                disabled={cancelling}
-                className="flex-1 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 border-r"
-              >
+        <Modal
+          open={showCancelModal}
+          onClose={() => setShowCancelModal(false)}
+          title="Cancelar Picking"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setShowCancelModal(false)} disabled={cancelling}>
                 Volver
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="danger"
                 onClick={handleCancelConfirm}
+                loading={cancelling}
                 disabled={cancelling || cancelReason.trim().length < 3}
-                className="flex-1 py-3 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-40"
               >
                 {cancelling ? 'Cancelando...' : 'Confirmar Cancelación'}
-              </button>
-            </div>
+              </Button>
+            </>
+          }
+        >
+          <div>
+            <p className="text-sm text-gray-500 mb-3">Pedido #{orderDisplayId}</p>
+            <p className="text-sm text-gray-700 mb-3">
+              Escribí el motivo de la cancelación:
+            </p>
+
+            <textarea
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Ej: Producto sin stock, error en el pedido..."
+              rows={3}
+              autoFocus
+              className="w-full px-3 py-2 border-2 rounded-xl text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none"
+            />
+
+            {cancelError && (
+              <div className="mt-2">
+                <Alert tone="error">{cancelError}</Alert>
+              </div>
+            )}
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

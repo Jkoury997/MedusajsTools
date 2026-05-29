@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
-import { connectDB } from '@/lib/mongodb/connection';
-import { audit } from '@/lib/mongodb/models';
+import { audit } from '@/lib/audit';
+import { requireRole } from '@/lib/session';
+import { errorResponse } from '@/lib/http';
 
 // POST /api/gestion/deliver - Marcar pedido como entregado
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
+    await requireRole('admin');
     const { orderId, orderDisplayId } = await req.json();
 
     if (!orderId) {
@@ -65,10 +66,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('[Deliver API] Error:', error);
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Error al marcar como entregado' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }

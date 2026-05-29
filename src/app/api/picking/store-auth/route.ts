@@ -1,10 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingUser, Store, hashPin, audit } from '@/lib/mongodb/models';
-import { createSessionToken } from '@/lib/auth';
+import { getEm } from '@/lib/db';
+import { User, Store } from '@/lib/entities';
+import { audit } from '@/lib/audit';
+import { hashPin, pinLookupHashes, isLegacyStored } from '@/lib/pin';
+import { createSessionToken, SESSION_DURATION } from '@/lib/auth';
+import { errorResponse } from '@/lib/http';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 const ADMIN_PIN = process.env.ADMIN_PIN;
+
+/** Cookie httpOnly de sesión (mismo patrón que picking/login). */
+function setSessionCookie(res: NextResponse, token: string, req: NextRequest) {
+  const isSecure = req.headers.get('x-forwarded-proto') === 'https' || req.url.startsWith('https');
+  res.cookies.set('picking-session', token, {
+    httpOnly: true,
+    secure: isSecure,
+    sameSite: 'lax',
+    maxAge: SESSION_DURATION / 1000,
+    path: '/',
+  });
+}
 
 // POST /api/picking/store-auth - Login de usuario tienda
 export async function POST(req: NextRequest) {
@@ -19,7 +34,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await connectDB();
+    const em = await getEm();
     const { pin } = await req.json();
 
     if (!pin || !/^\d{4,6}$/.test(pin)) {
@@ -31,9 +46,9 @@ export async function POST(req: NextRequest) {
 
     // Admin puede entrar a tienda — tomar la primera tienda disponible
     if (ADMIN_PIN && pin === ADMIN_PIN) {
-      const firstStore = await Store.findOne({ name: { $exists: true, $ne: '' } });
+      const firstStore = await em.findOne(Store, { name: { $ne: '' } });
       const token = createSessionToken('admin', 'store');
-      return NextResponse.json({
+      const res = NextResponse.json({
         success: true,
         user: {
           id: 'admin',
@@ -42,16 +57,17 @@ export async function POST(req: NextRequest) {
           storeId: firstStore?.externalId || 'admin',
           storeName: firstStore?.name || 'Admin',
         },
-        token,
         requirePinChange: false,
       });
+      setSessionCookie(res, token, req);
+      return res;
     }
 
-    const user = await PickingUser.findOne({
-      pin: hashPin(pin),
+    const user = await em.findOne(User, {
+      pin: { $in: pinLookupHashes(pin) },
       role: 'store',
       active: true,
-    }).select('-pin');
+    });
 
     if (!user) {
       return NextResponse.json(
@@ -60,33 +76,36 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Migración lazy del hash legacy.
+    if (isLegacyStored(user.pin, pin)) {
+      user.pin = hashPin(pin);
+      await em.flush();
+    }
+
     audit({
       action: 'store_login',
       userName: user.name,
-      userId: user._id.toString(),
+      userId: user.id,
       details: `Login tienda: ${user.storeName} (${user.name})`,
     });
 
     const requirePinChange = pin.length < 6;
-    const token = createSessionToken(user._id.toString(), 'store');
+    const token = createSessionToken(user.id, 'store');
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       success: true,
       user: {
-        id: user._id,
+        id: user.id,
         name: user.name,
         role: user.role,
         storeId: user.storeId,
         storeName: user.storeName,
       },
-      token,
       requirePinChange,
     });
+    setSessionCookie(res, token, req);
+    return res;
   } catch (error) {
-    console.error('[store-auth] Error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Error del servidor' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }

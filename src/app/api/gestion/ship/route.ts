@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
-import { connectDB } from '@/lib/mongodb/connection';
-import { audit, StoreShipment } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { StoreShipment } from '@/lib/entities';
+import { audit } from '@/lib/audit';
 import { isStorePickup } from '@/lib/shipping';
+import { requireRole } from '@/lib/session';
+import { errorResponse } from '@/lib/http';
 
 // POST /api/gestion/ship - Marcar pedido como enviado (crear shipment)
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
+    await requireRole('admin');
+    const em = await getEm();
     const { orderId, orderDisplayId } = await req.json();
 
     if (!orderId) {
@@ -27,11 +31,10 @@ export async function POST(req: NextRequest) {
     const fulfillments = order.fulfillments || [];
     const fulfillmentStatus = order.fulfillment_status || '';
     const shippingMethod = order.shipping_methods?.[0];
-    const shippingOptionId = shippingMethod?.shipping_option_id;
 
     // Verificar si ya fue enviado a tienda (para store pickup)
-    if (isStorePickup(shippingOptionId)) {
-      const existingShipment = await StoreShipment.findOne({ orderId });
+    if (isStorePickup(shippingMethod?.name)) {
+      const existingShipment = await em.findOne(StoreShipment, { orderId });
       if (existingShipment) {
         return NextResponse.json(
           { success: false, error: 'Este pedido ya fue enviado a la tienda' },
@@ -58,10 +61,10 @@ export async function POST(req: NextRequest) {
     // Para pedidos de RETIRO EN TIENDA: no llamar a Medusa shipment API
     // (Medusa trata pickup shipments como delivered automáticamente).
     // En su lugar, registrar el envío a tienda en MongoDB.
-    if (isStorePickup(shippingOptionId)) {
+    if (isStorePickup(shippingMethod?.name)) {
       const storeData = shippingMethod?.data?.store;
 
-      await StoreShipment.create({
+      const shipment = em.create(StoreShipment, {
         orderId,
         orderDisplayId: orderDisplayId || 0,
         storeId: storeData?.id || '',
@@ -70,6 +73,7 @@ export async function POST(req: NextRequest) {
         shippedByName: 'Gestión',
         shippedAt: new Date(),
       });
+      await em.persistAndFlush(shipment);
 
       invalidateOrdersCache();
 
@@ -117,10 +121,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('[Ship API] Error:', error);
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Error al enviar pedido' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession, PickingUser, audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { User, PickingSession, PickingItem } from '@/lib/entities';
+import { audit } from '@/lib/audit';
 
 interface RouteParams {
   params: Promise<{ orderId: string }>;
@@ -10,7 +11,7 @@ interface RouteParams {
 // ?includeCompleted=true para incluir sesiones completadas
 export async function GET(req: NextRequest, { params }: RouteParams) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { orderId } = await params;
     const includeCompleted = req.nextUrl.searchParams.get('includeCompleted') === 'true';
 
@@ -21,7 +22,10 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       query.status = 'in_progress';
     }
 
-    const session = await PickingSession.findOne(query).sort({ startedAt: -1 });
+    const session = await em.findOne(PickingSession, query, {
+      populate: ['items', 'user'],
+      orderBy: { startedAt: 'DESC' },
+    });
 
     if (!session) {
       return NextResponse.json(
@@ -30,23 +34,24 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const totalRequired = session.items.reduce((sum, i) => sum + i.quantityRequired, 0);
-    const totalPicked = session.items.reduce((sum, i) => sum + i.quantityPicked, 0);
-    const totalMissing = session.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
-    const isComplete = session.items.every(i => i.quantityPicked + (i.quantityMissing || 0) >= i.quantityRequired);
+    const items = session.items.getItems();
+    const totalRequired = items.reduce((sum, i) => sum + i.quantityRequired, 0);
+    const totalPicked = items.reduce((sum, i) => sum + i.quantityPicked, 0);
+    const totalMissing = items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
+    const isComplete = items.every(i => i.quantityPicked + (i.quantityMissing || 0) >= i.quantityRequired);
     const elapsed = Math.round((Date.now() - session.startedAt.getTime()) / 1000);
 
     return NextResponse.json({
       success: true,
       session: {
-        id: session._id,
+        id: session.id,
         orderId: session.orderId,
         orderDisplayId: session.orderDisplayId,
         status: session.status,
         startedAt: session.startedAt,
-        userId: session.userId,
+        userId: session.user.id,
         userName: session.userName,
-        items: session.items,
+        items,
         totalRequired,
         totalPicked,
         totalMissing,
@@ -66,7 +71,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 // POST /api/picking/session/:orderId - Iniciar sesión de picking
 export async function POST(req: NextRequest, { params }: RouteParams) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { orderId } = await params;
     const { userId, orderDisplayId, items } = await req.json();
 
@@ -78,7 +83,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     }
 
     // Validar usuario
-    const user = await PickingUser.findById(userId);
+    const user = await em.findOne(User, { id: userId });
     if (!user || !user.active) {
       return NextResponse.json(
         { success: false, error: 'Usuario inválido o inactivo' },
@@ -87,29 +92,30 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     }
 
     // Verificar sesión existente
-    const existing = await PickingSession.findOne({
+    const existing = await em.findOne(PickingSession, {
       orderId,
       status: 'in_progress',
-    });
+    }, { populate: ['items', 'user'] });
 
     if (existing) {
       // Retornar la sesión existente
-      const totalRequired = existing.items.reduce((sum, i) => sum + i.quantityRequired, 0);
-      const totalPicked = existing.items.reduce((sum, i) => sum + i.quantityPicked, 0);
-      const totalMissing = existing.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
-      const isComplete = existing.items.every(i => i.quantityPicked + (i.quantityMissing || 0) >= i.quantityRequired);
+      const existingItems = existing.items.getItems();
+      const totalRequired = existingItems.reduce((sum, i) => sum + i.quantityRequired, 0);
+      const totalPicked = existingItems.reduce((sum, i) => sum + i.quantityPicked, 0);
+      const totalMissing = existingItems.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
+      const isComplete = existingItems.every(i => i.quantityPicked + (i.quantityMissing || 0) >= i.quantityRequired);
       const elapsed = Math.round((Date.now() - existing.startedAt.getTime()) / 1000);
 
       return NextResponse.json({
         success: true,
         session: {
-          id: existing._id,
+          id: existing.id,
           orderId: existing.orderId,
           orderDisplayId: existing.orderDisplayId,
           status: existing.status,
           startedAt: existing.startedAt,
           userName: existing.userName,
-          items: existing.items,
+          items: existingItems,
           totalRequired,
           totalPicked,
           totalMissing,
@@ -123,29 +129,35 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     // Crear nueva sesión
     const totalRequired = items.reduce((sum: number, i: { quantityRequired: number }) => sum + i.quantityRequired, 0);
 
-    const session = await PickingSession.create({
+    const session = em.create(PickingSession, {
       orderId,
       orderDisplayId: orderDisplayId || 0,
       status: 'in_progress',
-      items: items.map((item: any) => ({
+      startedAt: new Date(),
+      user: em.getReference(User, user.id),
+      userName: user.name,
+      totalRequired,
+      totalPicked: 0,
+    });
+
+    for (const item of items as any[]) {
+      em.create(PickingItem, {
+        session,
         lineItemId: item.lineItemId,
         variantId: item.variantId,
         sku: item.sku,
         barcode: item.barcode,
         quantityRequired: item.quantityRequired,
         quantityPicked: 0,
-      })),
-      startedAt: new Date(),
-      userId: user._id,
-      userName: user.name,
-      totalRequired,
-      totalPicked: 0,
-    });
+      });
+    }
+
+    await em.persistAndFlush(session);
 
     audit({
       action: 'session_start',
       userName: user.name,
-      userId: user._id.toString(),
+      userId: user.id,
       orderId,
       orderDisplayId: orderDisplayId || 0,
       details: `Inicio picking pedido #${orderDisplayId || 0} (${totalRequired} items)`,
@@ -154,13 +166,13 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({
       success: true,
       session: {
-        id: session._id,
+        id: session.id,
         orderId: session.orderId,
         orderDisplayId: session.orderDisplayId,
         status: session.status,
         startedAt: session.startedAt,
         userName: session.userName,
-        items: session.items,
+        items: session.items.getItems(),
         totalRequired,
         totalPicked: 0,
         isComplete: false,
@@ -180,7 +192,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 // DELETE /api/picking/session/:orderId - Cancelar sesión (requiere razón)
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { orderId } = await params;
 
     // Leer razón del body
@@ -199,15 +211,7 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const session = await PickingSession.findOneAndUpdate(
-      { orderId, status: 'in_progress' },
-      {
-        status: 'cancelled',
-        cancelReason: reason,
-        cancelledAt: new Date(),
-      },
-      { new: true }
-    );
+    const session = await em.findOne(PickingSession, { orderId, status: 'in_progress' }, { populate: ['user'] });
 
     if (!session) {
       return NextResponse.json(
@@ -216,10 +220,15 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
       );
     }
 
+    session.status = 'cancelled';
+    session.cancelReason = reason;
+    session.cancelledAt = new Date();
+    await em.flush();
+
     audit({
       action: 'session_cancel',
       userName: session.userName,
-      userId: session.userId?.toString(),
+      userId: session.user?.id,
       orderId,
       orderDisplayId: session.orderDisplayId,
       details: `Cancelado: ${reason}`,

@@ -1,7 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import type { LineItem } from '@/lib/medusa';
+import { useAudioFeedback } from '@/hooks/useAudioFeedback';
+import { Button, Badge, Spinner } from '@/components/ui';
 
 interface MissingItem {
   lineItemId: string;
@@ -16,61 +19,6 @@ interface Props {
   orderDisplayId: number;
   orderItems: LineItem[];
   manualMode?: boolean;
-}
-
-function useReceiveFeedback() {
-  const audioCtx = useRef<AudioContext | null>(null);
-
-  const getAudioCtx = useCallback(() => {
-    if (!audioCtx.current) {
-      audioCtx.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    return audioCtx.current;
-  }, []);
-
-  const playTone = useCallback((frequency: number, duration: number) => {
-    try {
-      const ctx = getAudioCtx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.frequency.value = frequency;
-      gain.gain.value = 0.3;
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + duration);
-    } catch {
-      // Audio no disponible
-    }
-  }, [getAudioCtx]);
-
-  const vibrate = useCallback((pattern: number | number[]) => {
-    try {
-      if (navigator.vibrate) navigator.vibrate(pattern);
-    } catch {}
-  }, []);
-
-  const success = useCallback(() => {
-    playTone(880, 0.1);
-    setTimeout(() => playTone(1100, 0.15), 120);
-    vibrate(50);
-  }, [playTone, vibrate]);
-
-  const error = useCallback(() => {
-    playTone(200, 0.3);
-    vibrate([100, 50, 100]);
-  }, [playTone, vibrate]);
-
-  const allDone = useCallback(() => {
-    playTone(523, 0.15);
-    setTimeout(() => playTone(659, 0.15), 150);
-    setTimeout(() => playTone(784, 0.15), 300);
-    setTimeout(() => playTone(1047, 0.3), 450);
-    vibrate([100, 50, 100, 50, 200]);
-  }, [playTone, vibrate]);
-
-  return { success, error, allDone };
 }
 
 function getItemName(item: LineItem): string {
@@ -93,7 +41,9 @@ export default function FaltanteReceiveInterface({ orderId, orderDisplayId, orde
   const [lastScannedName, setLastScannedName] = useState<string | null>(null);
   const [showWrongArticle, setShowWrongArticle] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const feedback = useReceiveFeedback();
+  const router = useRouter();
+  const audio = useAudioFeedback();
+  const feedback = { success: audio.success, error: audio.error, allDone: audio.success };
 
   // Cargar items faltantes
   useEffect(() => {
@@ -230,8 +180,9 @@ export default function FaltanteReceiveInterface({ orderId, orderDisplayId, orde
   if (loading) {
     return (
       <div className="print:hidden mt-4">
-        <div className="w-full bg-yellow-50 py-4 rounded-xl flex items-center justify-center animate-pulse">
-          <span className="text-yellow-600 text-sm">Cargando faltantes...</span>
+        <div className="w-full bg-yellow-50 py-4 rounded-xl flex items-center justify-center gap-2 text-yellow-600 text-sm">
+          <Spinner className="w-4 h-4" />
+          Cargando faltantes...
         </div>
       </div>
     );
@@ -260,15 +211,17 @@ export default function FaltanteReceiveInterface({ orderId, orderDisplayId, orde
           </p>
         </div>
 
-        <button
-          onClick={() => { window.location.href = '/gestion'; }}
-          className="w-full bg-indigo-600 text-white py-4 rounded-xl text-lg font-bold flex items-center justify-center gap-2 active:bg-indigo-700 transition-colors shadow-lg"
+        <Button
+          onClick={() => router.push('/gestion')}
+          fullWidth
+          size="lg"
+          className="!bg-indigo-600 hover:!bg-indigo-700 shadow-lg"
         >
           <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
           </svg>
           Listo para enviar
-        </button>
+        </Button>
       </div>
     );
   }
@@ -321,13 +274,14 @@ export default function FaltanteReceiveInterface({ orderId, orderDisplayId, orde
                 className="w-full pl-10 pr-3 py-3.5 bg-white border-2 border-gray-300 rounded-xl text-base font-mono focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
               />
             </div>
-            <button
+            <Button
               type="submit"
               disabled={!barcodeInput.trim() || scanning}
-              className="px-5 py-3.5 bg-yellow-500 text-white rounded-xl text-sm font-bold disabled:opacity-50 active:bg-yellow-600"
+              size="lg"
+              className="!bg-yellow-500 hover:!bg-yellow-600"
             >
               OK
-            </button>
+            </Button>
           </form>
 
           {/* Last scanned feedback */}
@@ -415,11 +369,9 @@ export default function FaltanteReceiveInterface({ orderId, orderDisplayId, orde
                   </p>
                   <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                     <span className="text-xs text-gray-500 font-mono">{itemCode}</span>
-                    {size && <span className="text-xs px-1 py-0.5 bg-blue-100 text-blue-700 rounded">{size}</span>}
-                    {color && <span className="text-xs px-1 py-0.5 bg-gray-100 text-gray-700 rounded">{color}</span>}
-                    {!mi.barcode && !isDone && (
-                      <span className="text-xs px-1 py-0.5 bg-red-100 text-red-600 rounded">Sin código</span>
-                    )}
+                    {size && <Badge tone="info">{size}</Badge>}
+                    {color && <Badge tone="gray">{color}</Badge>}
+                    {!mi.barcode && !isDone && <Badge tone="danger">Sin código</Badge>}
                   </div>
                 </div>
 

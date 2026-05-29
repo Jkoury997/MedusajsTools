@@ -3,63 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-
-// === FEEDBACK: Sonido + Vibración ===
-function useScanFeedback() {
-  const audioCtx = useRef<AudioContext | null>(null);
-
-  const getAudioCtx = useCallback(() => {
-    if (!audioCtx.current) {
-      audioCtx.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    return audioCtx.current;
-  }, []);
-
-  const playTone = useCallback((frequency: number, duration: number, type: OscillatorType = 'sine') => {
-    try {
-      const ctx = getAudioCtx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = type;
-      osc.frequency.value = frequency;
-      gain.gain.value = 0.3;
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + duration);
-    } catch {
-      // Audio no disponible
-    }
-  }, [getAudioCtx]);
-
-  const vibrate = useCallback((pattern: number | number[]) => {
-    try {
-      if (navigator.vibrate) navigator.vibrate(pattern);
-    } catch {}
-  }, []);
-
-  const successFeedback = useCallback(() => {
-    playTone(880, 0.1);
-    setTimeout(() => playTone(1320, 0.15), 100);
-    vibrate(100);
-  }, [playTone, vibrate]);
-
-  const errorFeedback = useCallback(() => {
-    playTone(200, 0.3, 'square');
-    vibrate([100, 50, 100, 50, 200]);
-  }, [playTone, vibrate]);
-
-  const completeFeedback = useCallback(() => {
-    playTone(523, 0.1);
-    setTimeout(() => playTone(659, 0.1), 120);
-    setTimeout(() => playTone(784, 0.1), 240);
-    setTimeout(() => playTone(1047, 0.2), 360);
-    vibrate([100, 50, 100, 50, 300]);
-  }, [playTone, vibrate]);
-
-  return { successFeedback, errorFeedback, completeFeedback };
-}
+import { useAudioFeedback } from '@/hooks/useAudioFeedback';
+import { Button, Card, Alert, Spinner } from '@/components/ui';
 
 interface MissingItem {
   lineItemId: string;
@@ -82,7 +27,8 @@ export default function RecibirPage() {
   const [scanResult, setScanResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [scanning, setScanning] = useState(false);
   const barcodeRef = useRef<HTMLInputElement>(null);
-  const { successFeedback, errorFeedback, completeFeedback } = useScanFeedback();
+  const { success: successFeedback, error: errorFeedback } = useAudioFeedback();
+  const completeFeedback = successFeedback;
 
   const fetchData = useCallback(async () => {
     try {
@@ -197,8 +143,8 @@ export default function RecibirPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500" />
+      <div className="min-h-screen flex items-center justify-center text-yellow-500">
+        <Spinner className="w-8 h-8" />
       </div>
     );
   }
@@ -206,12 +152,14 @@ export default function RecibirPage() {
   if (error) {
     return (
       <div className="min-h-screen p-4">
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-          <p className="text-red-800 font-medium">{error}</p>
-          <Link href="/gestion" className="text-sm text-red-600 underline mt-2 inline-block">
-            Volver a gestión
-          </Link>
-        </div>
+        <Alert tone="error">
+          <span className="flex flex-col items-start gap-1">
+            <span className="font-medium">{error}</span>
+            <Link href="/gestion" className="text-sm underline">
+              Volver a gestión
+            </Link>
+          </span>
+        </Alert>
       </div>
     );
   }
@@ -274,7 +222,7 @@ export default function RecibirPage() {
       {!allReceived && (
         <div className="mt-4">
           {/* Barcode input */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <Card>
             <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
               Escanear código de barras
             </label>
@@ -296,35 +244,25 @@ export default function RecibirPage() {
                 autoFocus
                 disabled={scanning}
               />
-              <button
+              <Button
                 onClick={() => handleScan(barcodeInput)}
                 disabled={scanning || !barcodeInput.trim()}
-                className="px-4 py-3 bg-yellow-500 text-white rounded-xl font-bold active:bg-yellow-600 disabled:opacity-50"
+                size="lg"
+                className="!bg-yellow-500 hover:!bg-yellow-600"
               >
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-              </button>
+              </Button>
             </div>
-          </div>
+          </Card>
 
           {/* Scan result toast */}
           {scanResult && (
-            <div className={`mt-3 p-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
-              scanResult.type === 'success'
-                ? 'bg-green-50 text-green-800 border border-green-200'
-                : 'bg-red-50 text-red-800 border border-red-200'
-            }`}>
-              {scanResult.type === 'success' ? (
-                <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              ) : (
-                <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              )}
-              {scanResult.message}
+            <div className="mt-3">
+              <Alert tone={scanResult.type === 'success' ? 'success' : 'error'}>
+                {scanResult.message}
+              </Alert>
             </div>
           )}
         </div>
@@ -379,12 +317,13 @@ export default function RecibirPage() {
                   </span>
 
                   {!isComplete && !allReceived && (
-                    <button
+                    <Button
                       onClick={() => handleManualReceive(item.lineItemId)}
-                      className="px-3 py-1.5 bg-yellow-500 text-white rounded-lg text-xs font-bold active:bg-yellow-600"
+                      size="sm"
+                      className="!bg-yellow-500 hover:!bg-yellow-600"
                     >
                       +1
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingUser, hashPin, audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { User } from '@/lib/entities';
+import { audit } from '@/lib/audit';
+import { hashPin, pinLookupHashes, isLegacyStored } from '@/lib/pin';
+import { errorResponse } from '@/lib/http';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 const ADMIN_PIN = process.env.ADMIN_PIN;
@@ -18,7 +21,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await connectDB();
+    const em = await getEm();
     const { pin } = await req.json();
 
     if (!pin || !/^\d{4,6}$/.test(pin)) {
@@ -40,8 +43,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const user = await PickingUser.findOne({
-      pin: hashPin(pin),
+    const user = await em.findOne(User, {
+      pin: { $in: pinLookupHashes(pin) },
       role: 'picker',
       active: true,
     });
@@ -53,29 +56,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Migración perezosa: re-hashear PIN legacy a HMAC tras un match exitoso
+    if (isLegacyStored(user.pin, pin)) {
+      user.pin = hashPin(pin);
+      await em.flush();
+    }
+
     // Indicar si necesita cambiar a 6 dígitos
     const requirePinChange = pin.length < 6;
 
     return NextResponse.json({
       success: true,
       user: {
-        id: user._id,
+        id: user.id,
         name: user.name,
       },
       requirePinChange,
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: 'Error del servidor' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }
 
 // PUT /api/picking/auth - Cambiar PIN
 export async function PUT(req: NextRequest) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { userId, currentPin, newPin } = await req.json();
 
     if (!userId || !currentPin || !newPin) {
@@ -93,9 +99,9 @@ export async function PUT(req: NextRequest) {
     }
 
     // Verificar que el usuario existe y el PIN actual es correcto
-    const user = await PickingUser.findOne({
-      _id: userId,
-      pin: hashPin(currentPin),
+    const user = await em.findOne(User, {
+      id: userId,
+      pin: { $in: pinLookupHashes(currentPin) },
       active: true,
     });
 
@@ -106,10 +112,16 @@ export async function PUT(req: NextRequest) {
       );
     }
 
+    // Migración perezosa del PIN actual (verificación de PIN existente)
+    if (isLegacyStored(user.pin, currentPin)) {
+      user.pin = hashPin(currentPin);
+      await em.flush();
+    }
+
     // Verificar que el nuevo PIN no esté en uso
-    const existing = await PickingUser.findOne({
-      pin: hashPin(newPin),
-      _id: { $ne: userId },
+    const existing = await em.findOne(User, {
+      pin: { $in: pinLookupHashes(newPin) },
+      id: { $ne: userId },
     });
     if (existing) {
       return NextResponse.json(
@@ -120,12 +132,12 @@ export async function PUT(req: NextRequest) {
 
     // Actualizar PIN
     user.pin = hashPin(newPin);
-    await user.save();
+    await em.flush();
 
     audit({
       action: 'user_update',
       userName: user.name,
-      userId: user._id.toString(),
+      userId: user.id,
       details: `PIN actualizado a 6 dígitos por el usuario`,
     });
 
@@ -134,9 +146,6 @@ export async function PUT(req: NextRequest) {
       message: 'PIN actualizado correctamente',
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: 'Error del servidor' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }

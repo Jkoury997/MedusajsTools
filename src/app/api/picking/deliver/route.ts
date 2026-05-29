@@ -1,34 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingUser, StoreDelivery, StoreShipment, audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { User, StoreDelivery, StoreShipment } from '@/lib/entities';
+import { audit } from '@/lib/audit';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
 import { isFactoryPickup, isStorePickup as checkStorePickup } from '@/lib/shipping';
+import { requireSession } from '@/lib/session';
+import { errorResponse } from '@/lib/http';
 
 // POST /api/picking/deliver - Marcar pedido como entregado en tienda
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
-    const { orderId, orderDisplayId, userId } = await req.json();
+    // Requiere sesión válida (estación logueada). El actor concreto puede venir
+    // del body (picker identificado por PIN en una estación compartida) o, si no,
+    // ser el propio titular de la sesión (p. ej. usuario tienda por cookie).
+    const session = await requireSession();
+    const em = await getEm();
+    const { orderId, orderDisplayId, userId: bodyUserId } = await req.json();
 
-    if (!orderId || !userId) {
+    if (!orderId) {
       return NextResponse.json(
-        { success: false, error: 'orderId y userId son requeridos' },
+        { success: false, error: 'orderId es requerido' },
         { status: 400 }
       );
     }
 
-    // Validar usuario: acepta store, picker (solo fábrica) o admin
+    const actingId: string = bodyUserId || session.userId;
+
+    // Validar actor: acepta store, picker (solo fábrica) o admin
     let userName = 'Admin';
     let userRole = 'admin';
     let userStoreId = '';
     let userStoreName = '';
-    let userIdStr = userId;
+    let actorRef: User | undefined;
 
-    if (userId === 'admin') {
+    if (actingId === 'admin') {
       userName = 'Admin';
       userRole = 'admin';
     } else {
-      const user = await PickingUser.findById(userId);
+      const user = await em.findOne(User, { id: actingId });
       if (!user || !user.active || (user.role !== 'store' && user.role !== 'picker')) {
         return NextResponse.json(
           { success: false, error: 'Usuario no autorizado' },
@@ -39,11 +48,11 @@ export async function POST(req: NextRequest) {
       userRole = user.role;
       userStoreId = user.storeId || '';
       userStoreName = user.storeName || '';
-      userIdStr = user._id.toString();
+      actorRef = user;
     }
 
     // Verificar que no se haya entregado ya
-    const existing = await StoreDelivery.findOne({ orderId });
+    const existing = await em.findOne(StoreDelivery, { orderId });
     if (existing) {
       return NextResponse.json(
         { success: false, error: `Este pedido ya fue entregado el ${existing.deliveredAt.toLocaleDateString('es-AR')} por ${existing.deliveredByName}` },
@@ -64,10 +73,9 @@ export async function POST(req: NextRequest) {
 
       const methods = orderData.order.shipping_methods || [];
       const method = methods[0];
-      const shippingOptionId = method?.shipping_option_id;
 
       // Si es picker, solo puede entregar retiro en fábrica
-      if (userRole === 'picker' && !isFactoryPickup(shippingOptionId)) {
+      if (userRole === 'picker' && !isFactoryPickup(method?.name)) {
         return NextResponse.json(
           { success: false, error: 'Solo podés entregar pedidos de retiro en fábrica' },
           { status: 403 }
@@ -75,8 +83,8 @@ export async function POST(req: NextRequest) {
       }
 
       // Para retiro en tienda, verificar que el pedido haya sido enviado a la tienda
-      if (checkStorePickup(shippingOptionId)) {
-        const storeShipment = await StoreShipment.findOne({ orderId });
+      if (checkStorePickup(method?.name)) {
+        const storeShipment = await em.findOne(StoreShipment, { orderId });
         if (!storeShipment) {
           return NextResponse.json(
             { success: false, error: 'Este pedido aún no fue enviado a la tienda' },
@@ -127,17 +135,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Registrar entrega en MongoDB
-    const delivery = await StoreDelivery.create({
+    // Registrar entrega
+    const delivery = em.create(StoreDelivery, {
       orderId,
       orderDisplayId: orderDisplayId || 0,
       storeId: userStoreId,
       storeName: userStoreName,
-      deliveredByUserId: userIdStr,
+      deliveredBy: actorRef,
       deliveredByName: userName,
       deliveredAt: new Date(),
       shipmentCreated: delivered,
     });
+    await em.persistAndFlush(delivery);
 
     // Invalidar cache de pedidos
     invalidateOrdersCache();
@@ -146,7 +155,7 @@ export async function POST(req: NextRequest) {
     audit({
       action: 'order_deliver',
       userName,
-      userId: userIdStr,
+      userId: actorRef ? actorRef.id : undefined,
       orderId,
       orderDisplayId,
       details: `Pedido #${orderDisplayId} entregado por ${userName}${userStoreName ? ` en tienda ${userStoreName}` : ''}`,
@@ -156,7 +165,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       delivery: {
-        id: delivery._id,
+        id: delivery.id,
         deliveredAt: delivery.deliveredAt,
         deliveredByName: delivery.deliveredByName,
         storeName: delivery.storeName,
@@ -164,10 +173,6 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('[deliver] Error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Error al marcar como entregado' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }

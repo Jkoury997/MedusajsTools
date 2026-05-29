@@ -1,22 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession, StoreShipment } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { PickingSession, StoreShipment } from '@/lib/entities';
 import { getAllPaidOrders, isCashPayment, isMercadoLibreOrder } from '@/lib/medusa';
+import { classifyOrder } from '@/lib/shipping';
 
 // GET /api/gestion?tab=por-preparar|preparados|faltantes|por-enviar|enviados
 export async function GET(req: NextRequest) {
   try {
     const tab = req.nextUrl.searchParams.get('tab') || 'por-preparar';
 
-    await connectDB();
+    const em = await getEm();
 
     // Obtener todos los pedidos pagados de Medusa
     const allOrders = await getAllPaidOrders();
 
     // Obtener todas las sesiones (completadas + en progreso)
-    const allSessions = await PickingSession.find({ status: { $in: ['completed', 'in_progress'] } })
-      .select('orderId orderDisplayId status totalRequired totalPicked totalMissing packed packedAt userName completedAt durationSeconds faltanteResolution faltanteResolvedAt faltanteNotes items startedAt')
-      .lean();
+    const allSessions = await em.find(
+      PickingSession,
+      { status: { $in: ['completed', 'in_progress'] } },
+      { populate: ['items'] }
+    );
 
     const completedSessionMap = new Map<string, any>();
     const inProgressSessionMap = new Map<string, any>();
@@ -29,7 +32,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Obtener todos los envíos a tienda (StoreShipment) para saber qué pedidos fueron enviados a tienda
-    const allStoreShipments = await StoreShipment.find({}).select('orderId shippedAt storeName').lean();
+    const allStoreShipments = await em.find(StoreShipment, {});
     const storeShipmentMap = new Map<string, any>();
     for (const ss of allStoreShipments) {
       storeShipmentMap.set(ss.orderId, ss);
@@ -44,16 +47,12 @@ export async function GET(req: NextRequest) {
       const storeShipment = storeShipmentMap.get(order.id);
       const fulfillmentStatus = order.fulfillment_status || 'not_fulfilled';
 
-      // Determinar si el envío es express
+      // Clasificación única del envío (por nombre del método)
       const shippingMethod = order.shipping_methods?.[0];
       const shippingName = shippingMethod?.name || '';
-      const isExpress = shippingName.toLowerCase().includes('express') ||
-        shippingName.toLowerCase().includes('rápido') ||
-        shippingName.toLowerCase().includes('rapido');
-
-      // Detectar si es retiro en tienda
-      const shippingNameLower = shippingName.toLowerCase();
-      const isStorePickup = shippingNameLower.includes('retiro') || shippingNameLower.includes('tienda') || shippingNameLower.includes('pickup') || shippingNameLower.includes('sucursal');
+      const shippingCategory = classifyOrder(order);
+      const isExpress = shippingCategory === 'express';
+      const isStorePickup = shippingCategory === 'store_pickup';
       const storeData = shippingMethod?.data?.store;
       const customerPhone = order.shipping_address?.phone || order.billing_address?.phone || order.customer?.phone || null;
       const cashPayment = isCashPayment(order);
@@ -105,8 +104,10 @@ export async function GET(req: NextRequest) {
           faltanteResolution: completedSession.faltanteResolution,
           faltanteResolvedAt: completedSession.faltanteResolvedAt,
           faltanteNotes: completedSession.faltanteNotes,
-          missingItems: completedSession.items
-            ?.filter((i: any) => {
+          voucherCode: completedSession.voucherCode,
+          voucherValue: completedSession.voucherValue,
+          missingItems: completedSession.items.getItems()
+            .filter((i: any) => {
               const missing = i.quantityMissing || 0;
               const received = i.quantityReceived || 0;
               // Solo mostrar items que aún no fueron recibidos completamente
@@ -192,10 +193,8 @@ export async function GET(req: NextRequest) {
       const orderStoreShipment = storeShipmentMap.get(order.id);
       const fs = order.fulfillment_status || 'not_fulfilled';
 
-      // Detectar si es retiro en tienda
-      const sm = order.shipping_methods?.[0];
-      const smName = (sm?.name || '').toLowerCase();
-      const orderIsStorePickup = smName.includes('retiro') || smName.includes('tienda') || smName.includes('pickup') || smName.includes('sucursal');
+      // Detectar si es retiro en tienda (misma clasificación que el loop de arriba)
+      const orderIsStorePickup = classifyOrder(order) === 'store_pickup';
       const orderIsSentToStore = orderIsStorePickup && !!orderStoreShipment;
 
       if (['not_fulfilled', 'partially_fulfilled'].includes(fs) && !completedSession) {

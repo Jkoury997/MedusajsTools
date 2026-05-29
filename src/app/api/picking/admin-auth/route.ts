@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { audit } from '@/lib/audit';
 
 const ADMIN_PIN = process.env.ADMIN_PIN || '9999';
 
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Registrar login admin
-    await connectDB();
+    await getEm();
     audit({
       action: 'admin_login',
       userName: 'Admin',

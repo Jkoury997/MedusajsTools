@@ -1,12 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaidOrders } from '@/lib/medusa';
-import { connectDB } from '@/lib/mongodb/connection';
-import { StoreDelivery } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { StoreDelivery, User } from '@/lib/entities';
+import { requireSession } from '@/lib/session';
+import { errorResponse } from '@/lib/http';
+import { isStorePickup } from '@/lib/shipping';
 
 // GET /api/picking/store-orders?storeId=xxx - Pedidos de retiro para una tienda
 export async function GET(req: NextRequest) {
   try {
-    const storeId = req.nextUrl.searchParams.get('storeId');
+    const session = await requireSession();
+    const em = await getEm();
+
+    // Cargar el usuario que realiza la petición (puede ser null para el login admin)
+    const actor = await em.findOne(User, { id: session.userId });
+
+    // IDOR: un no-admin solo puede ver pedidos de SU propia tienda.
+    // Admin (rol admin, o el login admin-como-tienda con userId 'admin') puede ver cualquier tienda vía query.
+    const isAdmin = session.role === 'admin' || session.userId === 'admin';
+    const storeId = isAdmin
+      ? req.nextUrl.searchParams.get('storeId')
+      : actor?.storeId;
 
     if (!storeId) {
       return NextResponse.json(
@@ -14,8 +28,6 @@ export async function GET(req: NextRequest) {
         { status: 400 }
       );
     }
-
-    await connectDB();
 
     // Traer pedidos fulfilled (para enviar) y shipped (enviados)
     const [fulfilled, shipped] = await Promise.all([
@@ -32,12 +44,9 @@ export async function GET(req: NextRequest) {
       if (!methods || methods.length === 0) return false;
 
       const method = methods[0];
-      const methodName = (method.name || '').toLowerCase();
 
       // Verificar que sea envío a tienda
-      const isStorePickup = methodName.includes('retiro') || methodName.includes('tienda') ||
-        methodName.includes('pickup') || methodName.includes('sucursal');
-      if (!isStorePickup) return false;
+      if (!isStorePickup(method.name)) return false;
 
       // Debe tener data.store con ID para ser retiro en tienda real
       const store = method.data?.store;
@@ -49,7 +58,7 @@ export async function GET(req: NextRequest) {
 
     // Consultar entregas en MongoDB para estos pedidos
     const orderIds = storeOrders.map((o: any) => o.id);
-    const deliveries = await StoreDelivery.find({ orderId: { $in: orderIds } }).lean();
+    const deliveries = await em.find(StoreDelivery, { orderId: { $in: orderIds } });
     const deliveredSet = new Set(deliveries.map((d: any) => d.orderId));
 
     // Enriquecer pedidos: si MongoDB dice entregado pero Medusa no actualizó, marcarlo
@@ -66,10 +75,6 @@ export async function GET(req: NextRequest) {
       total: enrichedOrders.length,
     });
   } catch (error) {
-    console.error('[store-orders] Error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Error al obtener pedidos' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }

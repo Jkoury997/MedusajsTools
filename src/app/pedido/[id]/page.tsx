@@ -6,8 +6,8 @@ import FaltanteReceiveInterface from './FaltanteReceiveInterface';
 import StoreLabel from './StoreLabel';
 import DeliverButton from './DeliverButton';
 import { isFactoryPickup as checkFactoryPickup, isStorePickup as checkStorePickup } from '@/lib/shipping';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession, StoreShipment } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { PickingSession, StoreShipment } from '@/lib/entities';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -108,7 +108,7 @@ function formatProvince(provinceCode: string): string {
 function isFactoryPickup(order: Order): boolean {
   const methods = order.shipping_methods;
   if (!methods || methods.length === 0) return false;
-  return checkFactoryPickup(methods[0].shipping_option_id);
+  return checkFactoryPickup(methods[0].name);
 }
 
 // Detecta si el envío es retiro en tienda y devuelve datos de la tienda
@@ -116,10 +116,8 @@ function getStorePickupInfo(order: Order): { storeName: string; storeAddress: st
   const methods = order.shipping_methods;
   if (!methods || methods.length === 0) return null;
   const method = methods[0];
-  const name = (method.name || '').toLowerCase();
-  // Detectar por nombre: "retiro", "tienda", "pickup", "sucursal"
-  const isStorePickup = name.includes('retiro') || name.includes('tienda') || name.includes('pickup') || name.includes('sucursal');
-  if (!isStorePickup) return null;
+  // Detectar por nombre del método de envío
+  if (!checkStorePickup(method.name)) return null;
   // Intentar obtener datos de la tienda desde data.store
   const store = method.data?.store;
   if (store?.name && store?.address) {
@@ -414,13 +412,13 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
 
   // Verificar si hay una sesión completada con faltantes para este pedido
   let hasCompletedSessionWithFaltantes = false;
+  const em = await getEm();
   try {
-    await connectDB();
-    const completedSession = await PickingSession.findOne({
+    const completedSession = await em.findOne(PickingSession, {
       orderId: order.id,
       status: 'completed',
-      'items.quantityMissing': { $gt: 0 },
-    }).select('faltanteResolution').lean();
+      items: { quantityMissing: { $gt: 0 } },
+    });
 
     if (completedSession && ['pending', 'waiting'].includes(completedSession.faltanteResolution || '')) {
       hasCompletedSessionWithFaltantes = true;
@@ -434,11 +432,11 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
   const orderIsCash = isCashPayment(order as any);
 
   // Detectar si es retiro en tienda y si ya fue enviado a tienda
-  const orderIsStorePickup = checkStorePickup(order.shipping_methods?.[0]?.shipping_option_id);
+  const orderIsStorePickup = checkStorePickup(order.shipping_methods?.[0]?.name);
   let orderIsSentToStore = false;
   if (orderIsStorePickup) {
     try {
-      const storeShipment = await StoreShipment.findOne({ orderId: order.id }).lean();
+      const storeShipment = await em.findOne(StoreShipment, { orderId: order.id });
       orderIsSentToStore = !!storeShipment;
     } catch (e) {
       console.error('Error checking store shipment:', e);

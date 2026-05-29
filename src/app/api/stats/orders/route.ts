@@ -1,15 +1,17 @@
 import { NextResponse } from 'next/server';
 import { getAllPaidOrders } from '@/lib/medusa';
-import { SHIPPING_OPTIONS } from '@/lib/shipping';
+import { classifyOrder, type ShippingCategory } from '@/lib/shipping';
 
-// Mapa inverso: shipping_option_id → nombre legible
-const SHIPPING_ID_TO_KEY: Record<string, string> = {
-  [SHIPPING_OPTIONS.FACTORY_PICKUP]: 'factory_pickup',
-  [SHIPPING_OPTIONS.STORE_PICKUP]: 'store_pickup',
-  [SHIPPING_OPTIONS.EXPRESS]: 'express',
-  [SHIPPING_OPTIONS.CORREO_ARGENTINO]: 'correo_argentino',
-  [SHIPPING_OPTIONS.VIA_CARGO]: 'via_cargo',
-  [SHIPPING_OPTIONS.EXPRESO_CLIENTE]: 'expreso_cliente',
+// Mapa: categoría dinámica → clave de salida (se mantienen las claves históricas
+// para no romper el dashboard; p. ej. 'correo' → 'correo_argentino').
+const CATEGORY_TO_KEY: Record<ShippingCategory, string> = {
+  factory_pickup: 'factory_pickup',
+  store_pickup: 'store_pickup',
+  express: 'express',
+  correo: 'correo_argentino',
+  via_cargo: 'via_cargo',
+  expreso_cliente: 'expreso_cliente',
+  other: 'unknown',
 };
 
 // GET /api/stats/orders - Stats de órdenes desde Medusa
@@ -47,14 +49,9 @@ export async function GET() {
         byFulfillmentStatus[fStatus] = (byFulfillmentStatus[fStatus] || 0) + 1;
       }
 
-      // Shipping method
-      const shippingOptionId = order.shipping_methods?.[0]?.shipping_option_id;
-      const shippingKey = shippingOptionId ? SHIPPING_ID_TO_KEY[shippingOptionId] : null;
-      if (shippingKey) {
-        byShippingMethod[shippingKey]++;
-      } else {
-        byShippingMethod.unknown++;
-      }
+      // Shipping method (clasificado por el nombre del método de envío)
+      const shippingKey = CATEGORY_TO_KEY[classifyOrder(order)];
+      byShippingMethod[shippingKey]++;
     }
 
     return NextResponse.json({

@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { Card, Badge, Button, Alert, Spinner, Input, ConfirmDialog } from '@/components/ui';
+import { formatDate } from '@/lib/format';
 
 interface ApiKeyInfo {
   id: string;
@@ -23,6 +25,7 @@ export default function AdminSeguridadPage() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [confirmRevoke, setConfirmRevoke] = useState<{ id: string; name: string } | null>(null);
 
   async function fetchKeys() {
     setLoading(true);
@@ -69,7 +72,7 @@ export default function AdminSeguridadPage() {
   }
 
   async function handleRevoke(id: string, name: string) {
-    if (!confirm(`Revocar la API key "${name}"? Ya no podra usarse.`)) return;
+    setConfirmRevoke(null);
     try {
       const res = await fetch('/api/admin/api-keys', {
         method: 'DELETE',
@@ -94,11 +97,13 @@ export default function AdminSeguridadPage() {
   }
 
   const envConfig = [
-    { name: 'ADMIN_PIN', desc: 'PIN de administrador (obligatorio)', example: '841927' },
-    { name: 'SESSION_SECRET', desc: 'Secreto para firmar tokens de sesion', example: 'mi-secreto-seguro-2024-xyz' },
-    { name: 'STATS_API_KEY', desc: 'API key para endpoints de estadisticas', example: 'mk_xxxxx (usar key generada abajo)' },
+    { name: 'ADMIN_PIN', desc: 'PIN de administrador (obligatorio)', example: '(elegí 6 dígitos)' },
+    { name: 'SESSION_SECRET', desc: 'Secreto para firmar tokens de sesión', example: 'mi-secreto-seguro-2024-xyz' },
+    { name: 'STATS_API_KEY', desc: 'API key para endpoints de estadísticas', example: 'mk_xxxxx (usar key generada abajo)' },
     { name: 'STATS_CORS_ORIGIN', desc: 'Origen permitido para CORS en stats', example: 'https://mi-dashboard.com' },
-    { name: 'MONGODB_URI', desc: 'URI de conexion a MongoDB', example: 'mongodb+srv://...' },
+    { name: 'DATABASE_URL', desc: 'Conexión a PostgreSQL', example: 'postgresql://user:pass@host:5432/db' },
+    { name: 'MEDUSA_BACKEND_URL', desc: 'URL del backend de Medusa', example: 'https://backend.tu-dominio.com' },
+    { name: 'MEDUSA_SECRET_API_KEY', desc: 'Secret API key de Medusa (admin)', example: 'sk_xxxxx' },
   ];
 
   return (
@@ -113,24 +118,15 @@ export default function AdminSeguridadPage() {
           </Link>
           <div>
             <h1 className="text-lg font-bold">Seguridad</h1>
-            <p className="text-xs text-gray-400">API keys y configuracion</p>
+            <p className="text-xs text-gray-400">API keys y configuración</p>
           </div>
         </div>
       </div>
 
       <div className="mt-4 space-y-6">
         {/* Mensajes */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">
-            {error}
-            <button onClick={() => setError('')} className="float-right text-red-400">&times;</button>
-          </div>
-        )}
-        {successMsg && (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-green-700 text-sm">
-            {successMsg}
-          </div>
-        )}
+        {error && <Alert tone="error">{error}</Alert>}
+        {successMsg && <Alert tone="success">{successMsg}</Alert>}
 
         {/* Key recién creada */}
         {newKeyFull && (
@@ -141,124 +137,100 @@ export default function AdminSeguridadPage() {
               </svg>
               <span className="font-bold text-amber-800">Guarda esta API key ahora</span>
             </div>
-            <p className="text-xs text-amber-700">No se mostrara completa de nuevo. Copiala y guardala en tu .env como STATS_API_KEY.</p>
+            <p className="text-xs text-amber-700">No se mostrará completa de nuevo. Copiala y guardala en tu .env como STATS_API_KEY.</p>
             <div className="bg-white rounded-lg border border-amber-200 p-3 font-mono text-sm break-all text-gray-800">
               {newKeyFull}
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={() => handleCopy(newKeyFull)}
-                className="flex-1 bg-amber-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-amber-700"
-              >
-                {copied ? 'Copiada!' : 'Copiar key'}
-              </button>
-              <button
-                onClick={() => handleCopy(`STATS_API_KEY=${newKeyFull}`)}
-                className="flex-1 bg-gray-700 text-white py-2 rounded-lg text-sm font-semibold hover:bg-gray-800"
-              >
+              <Button fullWidth onClick={() => handleCopy(newKeyFull)}>
+                {copied ? '¡Copiada!' : 'Copiar key'}
+              </Button>
+              <Button fullWidth variant="secondary" onClick={() => handleCopy(`STATS_API_KEY=${newKeyFull}`)}>
                 Copiar como .env
-              </button>
+              </Button>
             </div>
             <button
               onClick={() => setNewKeyFull('')}
               className="w-full text-amber-600 text-xs font-medium hover:text-amber-800"
             >
-              Ya la guarde, cerrar
+              Ya la guardé, cerrar
             </button>
           </div>
         )}
 
         {/* Sección API Keys */}
-        <div className="bg-white rounded-xl border overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
+        <Card padding={false} className="overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
             <h2 className="text-sm font-bold text-gray-900">API Keys</h2>
-            <button
-              onClick={() => setShowForm(!showForm)}
-              className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
-            >
+            <Button size="sm" onClick={() => setShowForm(!showForm)}>
               + Nueva key
-            </button>
+            </Button>
           </div>
 
           {/* Form nueva key */}
           {showForm && (
-            <form onSubmit={handleCreate} className="px-4 py-3 bg-blue-50 border-b flex gap-2">
-              <input
+            <form onSubmit={handleCreate} className="px-4 py-3 bg-brand-50 border-b border-gray-100 flex gap-2 items-end">
+              <Input
                 type="text"
                 value={newKeyName}
                 onChange={(e) => setNewKeyName(e.target.value)}
                 placeholder="Nombre (ej: Dashboard)"
-                className="flex-1 px-3 py-2 border rounded-lg text-sm"
                 autoFocus
               />
-              <button
-                type="submit"
-                disabled={creating || !newKeyName.trim()}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
-              >
-                {creating ? '...' : 'Crear'}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowForm(false); setNewKeyName(''); }}
-                className="text-gray-500 px-2"
-              >
-                &times;
-              </button>
+              <Button type="submit" loading={creating} disabled={creating || !newKeyName.trim()}>
+                {creating ? '…' : 'Crear'}
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => { setShowForm(false); setNewKeyName(''); }}>
+                ×
+              </Button>
             </form>
           )}
 
           {loading ? (
-            <div className="p-8 text-center text-gray-400 text-sm">Cargando...</div>
+            <div className="flex justify-center py-8 text-brand-500">
+              <Spinner className="w-7 h-7" />
+            </div>
           ) : apiKeys.length === 0 ? (
-            <div className="p-8 text-center">
-              <p className="text-gray-500 text-sm">No hay API keys creadas</p>
-              <p className="text-gray-400 text-xs mt-1">Crea una para conectar tu dashboard externo</p>
+            <div className="p-4">
+              <Alert tone="info">No hay API keys creadas. Creá una para conectar tu dashboard externo.</Alert>
             </div>
           ) : (
-            <div className="divide-y">
+            <div className="divide-y divide-gray-100">
               {apiKeys.map(k => (
                 <div key={k.id} className="px-4 py-3 flex items-center justify-between">
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-semibold text-gray-900">{k.name}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                        k.active
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}>
+                      <Badge tone={k.active ? 'success' : 'danger'}>
                         {k.active ? 'Activa' : 'Revocada'}
-                      </span>
+                      </Badge>
                     </div>
                     <p className="text-xs text-gray-400 font-mono mt-0.5">{k.key}</p>
                     <p className="text-[10px] text-gray-400 mt-0.5">
-                      Creada {new Date(k.createdAt).toLocaleDateString('es-AR')}
-                      {k.lastUsedAt && ` - Ultimo uso: ${new Date(k.lastUsedAt).toLocaleDateString('es-AR')}`}
+                      Creada {formatDate(k.createdAt)}
+                      {k.lastUsedAt && ` - Último uso: ${formatDate(k.lastUsedAt)}`}
                     </p>
                   </div>
                   {k.active && (
-                    <button
-                      onClick={() => handleRevoke(k.id, k.name)}
-                      className="text-xs text-red-600 hover:text-red-800 font-medium px-2 py-1"
-                    >
+                    <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-800" onClick={() => setConfirmRevoke({ id: k.id, name: k.name })}>
                       Revocar
-                    </button>
+                    </Button>
                   )}
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </Card>
 
         {/* Guía de uso */}
-        <div className="bg-white rounded-xl border overflow-hidden">
-          <div className="px-4 py-3 bg-gray-50 border-b">
-            <h2 className="text-sm font-bold text-gray-900">Como usar la API key</h2>
+        <Card padding={false} className="overflow-hidden">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
+            <h2 className="text-sm font-bold text-gray-900">Cómo usar la API key</h2>
           </div>
           <div className="p-4 space-y-3">
             <div>
               <p className="text-xs font-semibold text-gray-700 mb-1">1. Generar key</p>
-              <p className="text-xs text-gray-500">Crea una nueva key arriba y copiala</p>
+              <p className="text-xs text-gray-500">Creá una nueva key arriba y copiala</p>
             </div>
             <div>
               <p className="text-xs font-semibold text-gray-700 mb-1">2. Configurar en .env</p>
@@ -273,40 +245,40 @@ export default function AdminSeguridadPage() {
               </div>
             </div>
           </div>
-        </div>
+        </Card>
 
         {/* Configuración de entorno */}
-        <div className="bg-white rounded-xl border overflow-hidden">
-          <div className="px-4 py-3 bg-gray-50 border-b">
+        <Card padding={false} className="overflow-hidden">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
             <h2 className="text-sm font-bold text-gray-900">Variables de entorno</h2>
             <p className="text-[10px] text-gray-400 mt-0.5">Configurar en .env o en el panel de tu hosting</p>
           </div>
-          <div className="divide-y">
+          <div className="divide-y divide-gray-100">
             {envConfig.map(v => (
               <div key={v.name} className="px-4 py-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono font-bold text-gray-900">{v.name}</span>
+                  <Badge tone="brand" className="font-mono">{v.name}</Badge>
                 </div>
-                <p className="text-xs text-gray-500 mt-0.5">{v.desc}</p>
+                <p className="text-xs text-gray-500 mt-1">{v.desc}</p>
                 <p className="text-[10px] text-gray-400 font-mono mt-0.5">Ejemplo: {v.example}</p>
               </div>
             ))}
           </div>
-        </div>
+        </Card>
 
         {/* Checklist de seguridad */}
-        <div className="bg-white rounded-xl border overflow-hidden">
-          <div className="px-4 py-3 bg-gray-50 border-b">
+        <Card padding={false} className="overflow-hidden">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
             <h2 className="text-sm font-bold text-gray-900">Checklist de seguridad</h2>
           </div>
           <div className="p-4 space-y-2">
             {[
               { text: 'ADMIN_PIN configurado (no usar default)', env: 'ADMIN_PIN' },
-              { text: 'SESSION_SECRET configurado con valor unico', env: 'SESSION_SECRET' },
+              { text: 'SESSION_SECRET configurado con valor único', env: 'SESSION_SECRET' },
               { text: 'STATS_API_KEY configurado para dashboard externo', env: 'STATS_API_KEY' },
               { text: 'STATS_CORS_ORIGIN restringido al dominio de tu dashboard', env: 'STATS_CORS_ORIGIN' },
-              { text: 'Todos los pickers con PIN de 6 digitos', env: null },
-              { text: 'HTTPS habilitado en produccion', env: null },
+              { text: 'Todos los pickers con PIN de 6 dígitos', env: null },
+              { text: 'HTTPS habilitado en producción', env: null },
             ].map((item, i) => (
               <div key={i} className="flex items-start gap-2 text-xs">
                 <span className="text-gray-400 mt-0.5">&#9744;</span>
@@ -314,8 +286,25 @@ export default function AdminSeguridadPage() {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       </div>
+
+      {/* Confirmación de revocación (reemplaza confirm() nativo) */}
+      <ConfirmDialog
+        open={confirmRevoke !== null}
+        title="Revocar API key"
+        message={
+          confirmRevoke
+            ? `¿Revocar la API key "${confirmRevoke.name}"? Ya no podrá usarse.`
+            : ''
+        }
+        confirmLabel="Revocar"
+        tone="danger"
+        onConfirm={() => {
+          if (confirmRevoke) handleRevoke(confirmRevoke.id, confirmRevoke.name);
+        }}
+        onCancel={() => setConfirmRevoke(null)}
+      />
     </div>
   );
 }

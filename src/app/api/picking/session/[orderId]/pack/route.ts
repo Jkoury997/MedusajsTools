@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession, PickingUser, audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { PickingSession, User } from '@/lib/entities';
+import { audit } from '@/lib/audit';
 
 interface RouteParams {
   params: Promise<{ orderId: string }>;
@@ -9,15 +10,15 @@ interface RouteParams {
 // POST /api/picking/session/:orderId/pack - Marcar pedido como empaquetado/listo para enviar
 export async function POST(req: NextRequest, { params }: RouteParams) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { orderId } = await params;
     const { userId } = await req.json();
 
     // Buscar sesión completada
-    const session = await PickingSession.findOne({
+    const session = await em.findOne(PickingSession, {
       orderId,
       status: 'completed',
-    }).sort({ completedAt: -1 });
+    }, { orderBy: { completedAt: 'DESC' } });
 
     if (!session) {
       return NextResponse.json(
@@ -44,14 +45,14 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     // Obtener nombre del usuario que empaqueta
     let packedByName = session.userName;
     if (userId) {
-      const user = await PickingUser.findById(userId);
+      const user = await em.findOne(User, { id: userId });
       if (user) packedByName = user.name;
     }
 
     session.packed = true;
     session.packedAt = new Date();
     session.packedByName = packedByName;
-    await session.save();
+    await em.flush();
 
     audit({
       action: 'order_pack',

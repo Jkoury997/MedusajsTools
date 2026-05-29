@@ -1,5 +1,4 @@
-const MEDUSA_BACKEND_URL = process.env.MEDUSA_BACKEND_URL || 'https://backend.marcelakoury.com';
-const MEDUSA_SECRET_API_KEY = process.env.MEDUSA_SECRET_API_KEY || '';
+import { config } from './config';
 
 interface MedusaRequestOptions {
   method?: string;
@@ -12,12 +11,16 @@ export async function medusaRequest<T>(endpoint: string, options: MedusaRequestO
 
   console.log(`[Medusa API] ${method} ${endpoint}`);
 
+  // Medusa v2: autenticación de admin con SECRET API KEY vía Basic auth.
+  // El esquema es base64("<secret_key>:") — la key como usuario, password vacío.
+  // (Reemplaza el login con email/password del admin.)
+  const basic = Buffer.from(`${config.medusaSecretApiKey}:`).toString('base64');
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    'Authorization': `Basic ${MEDUSA_SECRET_API_KEY}`,
+    'Authorization': `Basic ${basic}`,
   };
 
-  const response = await fetch(`${MEDUSA_BACKEND_URL}${endpoint}`, {
+  const response = await fetch(`${config.medusaBackendUrl}${endpoint}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,

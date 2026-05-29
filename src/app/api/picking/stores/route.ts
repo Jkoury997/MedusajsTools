@@ -1,26 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { Store } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { Store } from '@/lib/entities';
 import { getPaidOrders } from '@/lib/medusa';
+import { errorResponse } from '@/lib/http';
 
-// GET /api/picking/stores - Listar tiendas (MongoDB + sync desde pedidos)
+// GET /api/picking/stores - Listar tiendas (Postgres + sync desde pedidos)
 export async function GET() {
   try {
-    await connectDB();
+    const em = await getEm();
 
-    // Limpiar tiendas sin nombre que se hayan colado
-    await Store.deleteMany({
-      $or: [
-        { name: { $exists: false } },
-        { name: '' },
-        { name: null },
-        { externalId: { $exists: false } },
-        { externalId: '' },
-        { externalId: null },
-      ],
-    });
-
-    // Sync: extraer tiendas de pedidos y upsert en MongoDB
+    // Sync: extraer tiendas de pedidos y upsert en Postgres
     try {
       const [preparar, enviar, enviados] = await Promise.all([
         getPaidOrders(200, 0, 'preparar'),
@@ -41,11 +30,16 @@ export async function GET() {
             typeof store.id === 'string' && store.id.trim() !== '' &&
             typeof store.name === 'string' && store.name.trim() !== ''
           ) {
-            await Store.updateOne(
-              { externalId: store.id },
-              { $setOnInsert: { externalId: store.id, name: store.name.trim(), address: (store.address || '').trim(), active: true } },
-              { upsert: true }
-            );
+            const existing = await em.findOne(Store, { externalId: store.id });
+            if (!existing) {
+              const newStore = em.create(Store, {
+                externalId: store.id,
+                name: store.name.trim(),
+                address: (store.address || '').trim(),
+                active: true,
+              });
+              await em.persistAndFlush(newStore);
+            }
           }
         }
       }
@@ -54,11 +48,11 @@ export async function GET() {
     }
 
     // Devolver solo tiendas activas con nombre real
-    const stores = await Store.find({
+    const stores = await em.find(Store, {
       active: true,
-      name: { $exists: true, $ne: '' },
-      externalId: { $exists: true, $ne: '' },
-    }).sort({ name: 1 }).lean();
+      name: { $ne: '' },
+      externalId: { $ne: '' },
+    }, { orderBy: { name: 'ASC' } });
 
     return NextResponse.json({
       success: true,
@@ -66,22 +60,18 @@ export async function GET() {
         id: s.externalId,
         name: s.name,
         address: s.address || '',
-        _id: s._id,
+        _id: s.id,
       })),
     });
   } catch (error) {
-    console.error('[stores] Error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Error al obtener tiendas' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }
 
 // POST /api/picking/stores - Crear tienda manualmente
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { name, address } = await req.json();
 
     if (!name?.trim()) {
@@ -94,12 +84,13 @@ export async function POST(req: NextRequest) {
     // Generar un ID unico
     const externalId = `manual-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
-    const store = await Store.create({
+    const store = em.create(Store, {
       externalId,
       name: name.trim(),
       address: (address || '').trim(),
       active: true,
     });
+    await em.persistAndFlush(store);
 
     return NextResponse.json({
       success: true,
@@ -107,7 +98,7 @@ export async function POST(req: NextRequest) {
         id: store.externalId,
         name: store.name,
         address: store.address,
-        _id: store._id,
+        _id: store.id,
       },
     }, { status: 201 });
   } catch (error) {

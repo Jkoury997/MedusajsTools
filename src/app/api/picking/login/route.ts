@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingUser, audit, hashPin } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { User } from '@/lib/entities';
+import { audit } from '@/lib/audit';
+import { hashPin, pinLookupHashes, isLegacyStored } from '@/lib/pin';
 import { createSessionToken, SESSION_DURATION } from '@/lib/auth';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
@@ -23,7 +25,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await connectDB();
+    const em = await getEm();
     const { pin } = await req.json();
 
     // Detectar si es HTTPS para cookie secure
@@ -51,13 +53,18 @@ export async function POST(req: NextRequest) {
       return response;
     }
 
-    // Verificar si es picker
-    const user = await PickingUser.findOne({ pin: hashPin(pin), role: 'picker', active: true });
+    // Verificar si es picker (lookup determinístico: HMAC nuevo o sha256 legacy)
+    const user = await em.findOne(User, { pin: { $in: pinLookupHashes(pin) }, role: 'picker', active: true });
     if (user) {
-      const token = createSessionToken(user._id.toString(), 'picker');
+      // Migración lazy: si el hash es legacy, re-hashear a HMAC.
+      if (isLegacyStored(user.pin, pin)) {
+        user.pin = hashPin(pin);
+        await em.flush();
+      }
+      const token = createSessionToken(user.id, 'picker');
       const response = NextResponse.json({
         success: true,
-        user: { id: user._id, name: user.name, role: 'picker' },
+        user: { id: user.id, name: user.name, role: 'picker' },
         requirePinChange: pin.length < 6,
       });
       response.cookies.set('picking-session', token, {
@@ -67,7 +74,7 @@ export async function POST(req: NextRequest) {
         maxAge: SESSION_DURATION / 1000,
         path: '/',
       });
-      audit({ action: 'login', userName: user.name, userId: user._id.toString(), details: 'Login como picker' });
+      audit({ action: 'login', userName: user.name, userId: user.id, details: 'Login como picker' });
       return response;
     }
 

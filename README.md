@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Pickup System — Marcela Koury
 
-## Getting Started
+Sistema de pickeo / preparación de pedidos sobre **Next.js 16** (App Router, React 19),
+**PostgreSQL + MikroORM** y proxy a **Medusa v2**. Flujo: picking → packing →
+faltantes/vouchers → envío/entrega → portal de tienda + panel admin.
 
-First, run the development server:
+## Requisitos
+
+- Node 22+
+- PostgreSQL (instancia dedicada para este sistema)
+- Un backend Medusa v2 accesible
+
+## Variables de entorno (`.env.local`)
+
+Todas son **obligatorias** (la app falla al arrancar si falta alguna; no hay defaults):
+
+| Variable | Descripción |
+|----------|-------------|
+| `DATABASE_URL` | Conexión a Postgres, ej. `postgres://user:pass@host:5432/pickup` |
+| `SESSION_SECRET` | Secreto para firmar las sesiones (HMAC). Largo y aleatorio. |
+| `ADMIN_PIN` | PIN de administrador. |
+| `MEDUSA_BACKEND_URL` | URL del backend Medusa. |
+| `MEDUSA_SECRET_API_KEY` | API key (Basic) de Medusa. |
+| `STATS_API_KEY` | API key de SOLO LECTURA para el dashboard externo. |
+| `STATS_CORS_ORIGIN` | (opcional) Orígenes CORS permitidos, separados por coma. Sin valor = mismo origen. |
+
+## Setup
 
 ```bash
+npm install
+# 1) Crear el schema en el Postgres dedicado
+npm run db:setup
+# 2) (Solo migración inicial desde Mongo) copiar todos los datos.
+#    Requiere MONGODB_URI ademas de DATABASE_URL, con la base Mongo accesible.
+npm run db:migrate-from-mongo
+# 3) Levantar
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Arquitectura
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `src/lib/config.ts` — configuración validada (sin defaults).
+- `src/lib/db.ts` — init de MikroORM (cache global + `em.fork()` por request).
+- `src/lib/entities/*` — entidades (EntitySchema). `picking_items` es tabla hija de `picking_sessions`.
+- `src/lib/session.ts` — `getSession` / `requireSession` / `requireRole` (HMAC, compare en tiempo constante).
+- `src/lib/medusa.ts` — cliente de Medusa + cache de órdenes.
+- `src/lib/shipping.ts` — clasificación de envíos **dinámica** por el nombre del método que envía Medusa.
+- `src/middleware.ts` — auth: la `STATS_API_KEY` solo autoriza GET; las mutaciones requieren sesión; CORS por allowlist.
+- `src/components/ui/*` — design system (Button, Card, Badge, Input/PinInput, Alert, Spinner, Modal/ConfirmDialog, Tabs, AuthCard).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Seguridad
 
-## Learn More
+- Sesiones HMAC en cookie httpOnly (picker, tienda y admin).
+- PIN hasheado con HMAC + pepper (migración lazy de los sha256 heredados en el primer login).
+- Roles: las rutas `/api/admin/*`, gestión (mutaciones) y `users` (write) exigen rol admin.
 
-To learn more about Next.js, take a look at the following resources:
+## Scripts
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Script | Acción |
+|--------|--------|
+| `npm run dev` | Servidor de desarrollo |
+| `npm run build` | Build de producción |
+| `npm run lint` | ESLint |
+| `npm run db:setup` | Crea/actualiza el schema de Postgres |
+| `npm run db:migrate-from-mongo` | Migra todos los datos de Mongo a Postgres (una vez) |

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { PickingSession, PickingUser, audit } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { PickingSession, User } from '@/lib/entities';
+import { audit } from '@/lib/audit';
 import { medusaRequest } from '@/lib/medusa';
 
 interface RouteParams {
@@ -10,7 +11,7 @@ interface RouteParams {
 // POST /api/picking/session/:orderId/complete - Completar picking + fulfillment en Medusa
 export async function POST(req: NextRequest, { params }: RouteParams) {
   try {
-    await connectDB();
+    const em = await getEm();
     const { orderId } = await params;
     const { userId } = await req.json();
 
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     }
 
     // Validar usuario
-    const user = await PickingUser.findById(userId);
+    const user = await em.findOne(User, { id: userId });
     if (!user) {
       return NextResponse.json(
         { success: false, error: 'Usuario no válido' },
@@ -31,10 +32,10 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     }
 
     // Obtener sesión
-    const session = await PickingSession.findOne({
+    const session = await em.findOne(PickingSession, {
       orderId,
       status: 'in_progress',
-    });
+    }, { populate: ['items', 'user'] });
 
     if (!session) {
       return NextResponse.json(
@@ -43,12 +44,14 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       );
     }
 
+    const items = session.items.getItems();
+
     // Verificar que todo esté pickeado o marcado como faltante
-    const allAccounted = session.items.every(i => i.quantityPicked + (i.quantityMissing || 0) >= i.quantityRequired);
+    const allAccounted = items.every(i => i.quantityPicked + (i.quantityMissing || 0) >= i.quantityRequired);
     if (!allAccounted) {
-      const totalRequired = session.items.reduce((sum, i) => sum + i.quantityRequired, 0);
-      const totalPicked = session.items.reduce((sum, i) => sum + i.quantityPicked, 0);
-      const totalMissing = session.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
+      const totalRequired = items.reduce((sum, i) => sum + i.quantityRequired, 0);
+      const totalPicked = items.reduce((sum, i) => sum + i.quantityPicked, 0);
+      const totalMissing = items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
       return NextResponse.json(
         { success: false, error: `Faltan items (${totalPicked} pickeados + ${totalMissing} faltantes de ${totalRequired})` },
         { status: 400 }
@@ -58,41 +61,26 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     // Calcular duración
     const durationSeconds = Math.round((Date.now() - session.startedAt.getTime()) / 1000);
 
-    // PASO 1: Completar sesión en MongoDB
-    session.status = 'completed';
-    session.completedAt = new Date();
-    session.durationSeconds = durationSeconds;
-    session.completedByName = user.name;
+    const hasMissing = items.some(i => (i.quantityMissing || 0) > 0);
 
-    // Si hay faltantes, marcar resolución como pendiente
-    const hasMissing = session.items.some(i => (i.quantityMissing || 0) > 0);
-    if (hasMissing) {
-      session.faltanteResolution = 'pending';
-    }
-
-    await session.save();
-
-    const totalMissing = session.items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
-    const missingItems = session.items
+    const totalMissing = items.reduce((sum, i) => sum + (i.quantityMissing || 0), 0);
+    const missingItems = items
       .filter(i => (i.quantityMissing || 0) > 0)
       .map(i => ({ lineItemId: i.lineItemId, sku: i.sku, barcode: i.barcode, quantityMissing: i.quantityMissing }));
 
-    audit({
-      action: 'session_complete',
-      userName: user.name,
-      userId: user._id.toString(),
-      orderId,
-      orderDisplayId: session.orderDisplayId,
-      details: `Picking completado en ${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s (${session.totalPicked} items${totalMissing > 0 ? `, ${totalMissing} faltantes` : ''})`,
-      metadata: { durationSeconds, totalPicked: session.totalPicked, totalRequired: session.totalRequired, totalMissing, missingItems },
-    });
-
-    // PASO 2: Crear fulfillment en Medusa
+    // PASO 1: Crear fulfillment en Medusa (ANTES de marcar la sesión como completada)
     // Si hay faltantes, NO crear fulfillment ahora — se crea uno solo cuando se reciba todo
     let fulfillmentCreated = false;
     let fulfillmentError = '';
+    // Indica si se intentó crear un fulfillment (hay items a despachar) y éste falló
+    let fulfillmentFailed = false;
 
-    if (!hasMissing) {
+    // Idempotencia: si ya se creó el fulfillment previamente, no volver a crearlo
+    const alreadyFulfilled = session.fulfillmentStatus === 'created';
+
+    if (alreadyFulfilled) {
+      fulfillmentCreated = true;
+    } else if (!hasMissing) {
       try {
         // Obtener el pedido de Medusa para tener los datos de items
         const orderData = await medusaRequest<{ order: any }>(
@@ -101,11 +89,12 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
         const order = orderData.order;
 
-        // Crear fulfillment con todos los items (no hay faltantes)
+        // Crear fulfillment solo con las cantidades realmente pickeadas.
+        // Nunca despachar la cantidad pedida para una línea sin item de sesión.
         const fulfillmentItems = order.items
           .map((item: any) => {
-            const sessionItem = session.items.find(si => si.lineItemId === item.id);
-            const pickedQty = sessionItem ? sessionItem.quantityPicked : item.quantity;
+            const sessionItem = items.find(si => si.lineItemId === item.id);
+            const pickedQty = sessionItem ? sessionItem.quantityPicked : 0;
             return { id: item.id, quantity: pickedQty };
           })
           .filter((item: any) => item.quantity > 0);
@@ -123,20 +112,21 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         audit({
           action: 'fulfillment_create',
           userName: user.name,
-          userId: user._id.toString(),
+          userId: user.id,
           orderId,
           orderDisplayId: session.orderDisplayId,
           details: `Fulfillment creado en Medusa para pedido #${session.orderDisplayId}`,
         });
       } catch (error) {
-        // Si falla el fulfillment, igual el picking queda completado
+        // El fulfillment falló: NO completamos la sesión, marcamos el estado como 'failed'
         fulfillmentError = error instanceof Error ? error.message : 'Error al crear fulfillment';
+        fulfillmentFailed = true;
         console.error('Error creating fulfillment in Medusa:', error);
 
         audit({
           action: 'fulfillment_error',
           userName: user.name,
-          userId: user._id.toString(),
+          userId: user.id,
           orderId,
           orderDisplayId: session.orderDisplayId,
           details: `Error fulfillment: ${fulfillmentError}`,
@@ -145,6 +135,54 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     } else {
       console.log(`[complete] Hay ${totalMissing} faltantes, no se crea fulfillment hasta que se reciban`);
     }
+
+    // Si se intentó crear el fulfillment y falló: NO marcar la sesión como completada.
+    if (fulfillmentFailed) {
+      session.fulfillmentStatus = 'failed';
+      await em.flush();
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Error al crear el fulfillment en Medusa; la sesión NO se marcó como completada',
+          sessionId: session.id,
+          orderId,
+          fulfillmentCreated: false,
+          fulfillmentError: fulfillmentError || undefined,
+          totalMissing,
+          missingItems,
+        },
+        { status: 502 }
+      );
+    }
+
+    // PASO 2: Completar la sesión en MongoDB (solo si el fulfillment fue exitoso o no aplicaba)
+    session.status = 'completed';
+    session.completedAt = new Date();
+    session.durationSeconds = durationSeconds;
+    session.completedByName = user.name;
+
+    // fulfillmentStatus refleja el resultado real:
+    // - 'created' si se creó (o ya existía) un fulfillment
+    // - 'none' si no había nada que despachar (todo faltante)
+    session.fulfillmentStatus = fulfillmentCreated ? 'created' : 'none';
+
+    // Si hay faltantes, marcar resolución como pendiente
+    if (hasMissing) {
+      session.faltanteResolution = 'pending';
+    }
+
+    await em.flush();
+
+    audit({
+      action: 'session_complete',
+      userName: user.name,
+      userId: user.id,
+      orderId,
+      orderDisplayId: session.orderDisplayId,
+      details: `Picking completado en ${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s (${session.totalPicked} items${totalMissing > 0 ? `, ${totalMissing} faltantes` : ''})`,
+      metadata: { durationSeconds, totalPicked: session.totalPicked, totalRequired: session.totalRequired, totalMissing, missingItems },
+    });
 
     // Formatear duración
     const mins = Math.floor(durationSeconds / 60);
@@ -155,8 +193,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       success: true,
       message: fulfillmentCreated
         ? 'Picking completado y pedido marcado como preparado'
-        : 'Picking completado pero hubo un error al actualizar Medusa',
-      sessionId: session._id,
+        : 'Picking completado (sin items para despachar)',
+      sessionId: session.id,
       orderId,
       durationSeconds,
       durationFormatted,

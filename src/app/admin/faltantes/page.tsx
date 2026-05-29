@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { Card, Badge, Button, Alert, Spinner } from '@/components/ui';
 
 interface ProductRankingItem {
   sku: string | null;
@@ -112,49 +113,46 @@ export default function FaltantesPage() {
         {/* Period filter */}
         <div className="flex gap-2">
           {(['today', 'week', 'all'] as Period[]).map((p) => (
-            <button
+            <Button
               key={p}
+              fullWidth
+              variant={period === p ? 'primary' : 'secondary'}
               onClick={() => setPeriod(p)}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                period === p
-                  ? 'bg-red-600 text-white'
-                  : 'bg-white text-gray-600 border hover:bg-gray-50'
-              }`}
             >
               {p === 'today' ? 'Hoy' : p === 'week' ? 'Semana' : 'Mes'}
-            </button>
+            </Button>
           ))}
         </div>
 
         {loading ? (
-          <div className="text-center py-12">
-            <div className="animate-pulse text-gray-400">Cargando...</div>
+          <div className="flex justify-center py-12 text-brand-500">
+            <Spinner className="w-8 h-8" />
           </div>
         ) : stats ? (
           <>
             {/* Global stats cards */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white rounded-xl border p-4 text-center">
+              <Card className="text-center">
                 <p className="text-3xl font-bold text-red-600">{stats.global.totalMissing}</p>
                 <p className="text-xs text-gray-500 mt-1">Total faltantes</p>
-              </div>
-              <div className="bg-white rounded-xl border p-4 text-center">
+              </Card>
+              <Card className="text-center">
                 <p className="text-3xl font-bold text-gray-900">{stats.global.sessionsWithMissing}</p>
                 <p className="text-xs text-gray-500 mt-1">Pedidos con faltantes</p>
-              </div>
-              <div className="bg-white rounded-xl border p-4 text-center">
+              </Card>
+              <Card className="text-center">
                 <p className="text-3xl font-bold text-orange-600">{stats.global.missingRate}%</p>
                 <p className="text-xs text-gray-500 mt-1">Tasa de faltantes</p>
-              </div>
-              <div className="bg-white rounded-xl border p-4 text-center">
-                <p className="text-3xl font-bold text-blue-600">{stats.today.totalMissing}</p>
+              </Card>
+              <Card className="text-center">
+                <p className="text-3xl font-bold text-brand-600">{stats.today.totalMissing}</p>
                 <p className="text-xs text-gray-500 mt-1">Faltantes hoy</p>
-              </div>
+              </Card>
             </div>
 
             {/* Daily trend */}
             {stats.dailyTrend?.length > 0 && (
-              <div className="bg-white rounded-xl border p-4">
+              <Card>
                 <h3 className="text-sm font-bold text-gray-700 mb-3">Tendencia diaria</h3>
                 <div className="flex items-end gap-1 h-24">
                   {stats.dailyTrend.map((day) => {
@@ -174,30 +172,25 @@ export default function FaltantesPage() {
                     );
                   })}
                 </div>
-              </div>
+              </Card>
             )}
 
             {/* Product ranking */}
-            <div className="bg-white rounded-xl border overflow-hidden">
-              <div className="p-4 border-b">
+            <Card padding={false} className="overflow-hidden">
+              <div className="p-4 border-b border-gray-100">
                 <h3 className="text-sm font-bold text-gray-700">Ranking de productos faltantes</h3>
               </div>
               {!stats.productRanking?.length ? (
-                <div className="p-6 text-center text-gray-400 text-sm">
-                  Sin faltantes en este periodo
+                <div className="p-4">
+                  <Alert tone="info">Sin faltantes en este período.</Alert>
                 </div>
               ) : (
-                <div className="divide-y">
+                <div className="divide-y divide-gray-100">
                   {stats.productRanking.map((product, i) => (
                     <div key={`${product.sku}-${product.barcode}-${i}`} className="p-3 flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
-                        i === 0 ? 'bg-red-100 text-red-700' :
-                        i === 1 ? 'bg-orange-100 text-orange-700' :
-                        i === 2 ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>
+                      <Badge tone={i === 0 ? 'danger' : i === 1 ? 'warning' : i === 2 ? 'warning' : 'gray'}>
                         {i + 1}
-                      </div>
+                      </Badge>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate">
                           {product.sku || product.barcode || product.variantId || 'Desconocido'}
@@ -214,18 +207,18 @@ export default function FaltantesPage() {
                   ))}
                 </div>
               )}
-            </div>
+            </Card>
 
             {/* Per picker */}
             {stats.perPicker?.length > 0 && (
-              <div className="bg-white rounded-xl border overflow-hidden">
-                <div className="p-4 border-b">
+              <Card padding={false} className="overflow-hidden">
+                <div className="p-4 border-b border-gray-100">
                   <h3 className="text-sm font-bold text-gray-700">Faltantes por picker</h3>
                 </div>
-                <div className="divide-y">
+                <div className="divide-y divide-gray-100">
                   {stats.perPicker.map((picker) => (
                     <div key={picker.userId} className="p-3 flex items-center gap-3">
-                      <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-sm font-bold text-gray-600">
+                      <div className="w-8 h-8 bg-brand-100 text-brand-700 rounded-full flex items-center justify-center text-sm font-bold">
                         {picker.userName.charAt(0).toUpperCase()}
                       </div>
                       <div className="flex-1">
@@ -239,11 +232,11 @@ export default function FaltantesPage() {
                     </div>
                   ))}
                 </div>
-              </div>
+              </Card>
             )}
           </>
         ) : (
-          <div className="text-center py-12 text-gray-400">Error al cargar datos</div>
+          <Alert tone="error">Error al cargar datos.</Alert>
         )}
       </div>
     </div>

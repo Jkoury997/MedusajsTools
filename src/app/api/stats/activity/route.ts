@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb/connection';
-import { AuditLog, StoreDelivery, PickingUser } from '@/lib/mongodb/models';
+import { getEm } from '@/lib/db';
+import { AuditLog, StoreDelivery, User } from '@/lib/entities';
 
 // GET /api/stats/activity - Actividad (auditoría + entregas + usuarios)
 export async function GET(req: NextRequest) {
   try {
-    await connectDB();
+    const em = await getEm();
 
     const { searchParams } = new URL(req.url);
     const dateFrom = searchParams.get('from');
@@ -37,70 +37,76 @@ export async function GET(req: NextRequest) {
     }
 
     const [
-      auditByAction,
-      recentActions,
-      deliveriesByStore,
-      recentDeliveries,
+      auditLogs,
+      recentActionLogs,
+      deliveries,
+      recentDeliveryDocs,
       totalDeliveries,
       activePickers,
       activeStoreUsers,
     ] = await Promise.all([
-      // 1. Audit: conteo por tipo de acción
-      AuditLog.aggregate([
-        { $match: { ...dateMatch } },
-        { $group: { _id: '$action', count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-      ]),
+      // 1. Audit: todos los logs del período (para conteo por tipo de acción en JS)
+      em.find(AuditLog, dateMatch),
 
       // 2. Audit: últimas 20 acciones
-      AuditLog.find(dateMatch)
-        .sort({ createdAt: -1 })
-        .limit(20)
-        .select('action userName orderId orderDisplayId details createdAt')
-        .lean(),
+      em.find(AuditLog, dateMatch, { orderBy: { createdAt: 'DESC' }, limit: 20 }),
 
-      // 3. Entregas agrupadas por tienda
-      StoreDelivery.aggregate([
-        { $match: { ...deliveryDateMatch } },
-        {
-          $group: {
-            _id: { storeId: '$storeId', storeName: '$storeName' },
-            count: { $sum: 1 },
-          },
-        },
-        { $sort: { count: -1 } },
-      ]),
+      // 3. Entregas del período (para agrupar por tienda en JS)
+      em.find(StoreDelivery, deliveryDateMatch),
 
       // 4. Últimas 10 entregas
-      StoreDelivery.find(deliveryDateMatch)
-        .sort({ deliveredAt: -1 })
-        .limit(10)
-        .select('orderId orderDisplayId storeName deliveredByName deliveredAt')
-        .lean(),
+      em.find(StoreDelivery, deliveryDateMatch, { orderBy: { deliveredAt: 'DESC' }, limit: 10 }),
 
       // 5. Total entregas en período
-      StoreDelivery.countDocuments(deliveryDateMatch),
+      em.count(StoreDelivery, deliveryDateMatch),
 
       // 6-7. Usuarios activos
-      PickingUser.countDocuments({ active: true, role: 'picker' }),
-      PickingUser.countDocuments({ active: true, role: 'store' }),
+      em.count(User, { active: true, role: 'picker' }),
+      em.count(User, { active: true, role: 'store' }),
     ]);
 
-    // Procesar audit por acción
+    // Proyección equivalente al .select() de Mongo
+    const recentActions = recentActionLogs.map(a => ({
+      action: a.action,
+      userName: a.userName,
+      orderId: a.orderId,
+      orderDisplayId: a.orderDisplayId,
+      details: a.details,
+      createdAt: a.createdAt,
+    }));
+    const recentDeliveries = recentDeliveryDocs.map(d => ({
+      orderId: d.orderId,
+      orderDisplayId: d.orderDisplayId,
+      storeName: d.storeName,
+      deliveredByName: d.deliveredByName,
+      deliveredAt: d.deliveredAt,
+    }));
+
+    // Procesar audit por acción (group by action + count, ordenado desc)
     const byActionType: Record<string, number> = {};
     let totalActions = 0;
-    for (const a of auditByAction) {
-      byActionType[a._id] = a.count;
-      totalActions += a.count;
+    for (const a of auditLogs) {
+      byActionType[a.action] = (byActionType[a.action] || 0) + 1;
+      totalActions += 1;
+    }
+    // Reordenar por count desc (equivalente a $sort: { count: -1 })
+    const sortedByAction: Record<string, number> = {};
+    for (const [action, count] of Object.entries(byActionType).sort((x, y) => y[1] - x[1])) {
+      sortedByAction[action] = count;
     }
 
-    // Procesar entregas por tienda
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const byStore = deliveriesByStore.map((d: any) => ({
-      storeId: d._id.storeId,
-      storeName: d._id.storeName,
-      count: d.count,
-    }));
+    // Procesar entregas por tienda (group by storeId+storeName + count, ordenado desc)
+    const storeMap = new Map<string, { storeId: string; storeName: string; count: number }>();
+    for (const d of deliveries) {
+      const k = `${d.storeId}|${d.storeName}`;
+      const existing = storeMap.get(k);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        storeMap.set(k, { storeId: d.storeId, storeName: d.storeName, count: 1 });
+      }
+    }
+    const byStore = Array.from(storeMap.values()).sort((a, b) => b.count - a.count);
 
     const periodFrom = dateFrom || defaultFrom.toISOString().split('T')[0];
     const periodTo = dateTo || now.toISOString().split('T')[0];
@@ -111,7 +117,7 @@ export async function GET(req: NextRequest) {
       period: { from: periodFrom, to: periodTo },
       audit: {
         totalActions,
-        byActionType,
+        byActionType: sortedByAction,
         recentActions,
       },
       deliveries: {

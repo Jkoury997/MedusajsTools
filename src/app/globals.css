@@ -1,121 +1,69 @@
 @import "tailwindcss";
 
+/* ==================== DESIGN TOKENS ==================== */
 :root {
-  --background: #f9fafb;
-  --foreground: #171717;
+  /* Marca */
+  --brand-50: #fff1f6;
+  --brand-100: #ffe4ee;
+  --brand-200: #ffc9dd;
+  --brand-300: #ff9dbf;
+  --brand-400: #ff75a8;   /* color de marca histórico */
+  --brand-500: #f64f8b;
+  --brand-600: #e02e6f;
+  --brand-700: #bd1f59;
+
+  /* Neutros */
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f3f4f6;
+  --border: #e5e7eb;
+  --fg: #111827;
+  --fg-muted: #6b7280;
+
+  /* Estados */
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --info: #2563eb;
+
+  /* Radios y sombras */
+  --radius: 0.875rem;
+  --radius-sm: 0.5rem;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow: 0 4px 16px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.12);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Print Styles */
-@media print {
-  @page {
-    size: A4;
-    margin: 2cm 1.5cm 1.5cm 1.5cm;
-  }
-
-  body {
-    background: white !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  /* Hide non-essential elements */
-  .print\:hidden {
-    display: none !important;
-  }
-
-  /* Show print-only elements */
-  .print\:block {
-    display: block !important;
-  }
-
-  /* Ensure proper page breaks */
-  table {
-    page-break-inside: auto;
-  }
-
-  tr {
-    page-break-inside: avoid;
-    page-break-after: auto;
-  }
-
-  thead {
-    display: table-header-group;
-  }
-
-  /* Ensure backgrounds print */
-  .bg-blue-100,
-  .bg-green-100,
-  .bg-yellow-100,
-  .bg-red-100,
-  .bg-gray-50,
-  .bg-gray-100 {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  /* Make quantity badges more visible */
-  .print\:bg-gray-200 {
-    background-color: #e5e7eb !important;
-  }
-
-  .print\:text-gray-900 {
-    color: #111827 !important;
-  }
-
-  /* Remove shadows in print */
-  .print\:shadow-none {
-    box-shadow: none !important;
-  }
-
-  /* Add borders in print */
-  .print\:border {
-    border-width: 1px !important;
-  }
-
-  .print\:border-gray-300 {
-    border-color: #d1d5db !important;
-  }
-
-  /* Adjust padding for print */
-  .print\:p-0 {
-    padding: 0 !important;
-  }
-
-  /* Header adjustments */
-  header {
-    display: none !important;
-  }
-
-  main {
-    padding: 0 !important;
-    margin: 0 !important;
-    max-width: 100% !important;
-  }
+/* Focus accesible y consistente */
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
-/* Custom checkbox styling */
-input[type="checkbox"] {
-  cursor: pointer;
-}
-
-input[type="checkbox"]:checked {
-  background-color: #2563eb;
-}
-
-/* Line clamp utility */
+/* Utilidades */
 .line-clamp-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -123,24 +71,29 @@ input[type="checkbox"]:checked {
   overflow: hidden;
 }
 
-/* Smooth transitions */
-.transition-shadow {
-  transition: box-shadow 0.2s ease-in-out;
-}
+input[type="checkbox"] { cursor: pointer; accent-color: var(--brand-500); }
 
-/* Focus states */
-button:focus,
-a:focus {
-  outline: 2px solid #2563eb;
-  outline-offset: 2px;
-}
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; }
 
-/* Table improvements */
-table {
-  border-collapse: collapse;
-  width: 100%;
-}
-
-th, td {
-  text-align: left;
+/* ==================== PRINT ==================== */
+@media print {
+  @page { size: A4; margin: 2cm 1.5cm 1.5cm 1.5cm; }
+  body { background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .print\:hidden { display: none !important; }
+  .print\:block { display: block !important; }
+  table { page-break-inside: auto; }
+  tr { page-break-inside: avoid; page-break-after: auto; }
+  thead { display: table-header-group; }
+  .bg-blue-100, .bg-green-100, .bg-yellow-100, .bg-red-100, .bg-gray-50, .bg-gray-100 {
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .print\:bg-gray-200 { background-color: #e5e7eb !important; }
+  .print\:text-gray-900 { color: #111827 !important; }
+  .print\:shadow-none { box-shadow: none !important; }
+  .print\:border { border-width: 1px !important; }
+  .print\:border-gray-300 { border-color: #d1d5db !important; }
+  .print\:p-0 { padding: 0 !important; }
+  header { display: none !important; }
+  main { padding: 0 !important; margin: 0 !important; max-width: 100% !important; }
 }
