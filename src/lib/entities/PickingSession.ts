@@ -74,8 +74,13 @@ export class PickingSession {
   updatedAt: Date = new Date();
 }
 
+// Fijar nombres de clase para que sobrevivan la minificación (ver User.ts).
+Object.defineProperty(PickingItem, 'name', { value: 'PickingItem' });
+Object.defineProperty(PickingSession, 'name', { value: 'PickingSession' });
+
 export const PickingItemSchema = new EntitySchema<PickingItem>({
   class: PickingItem,
+  name: 'PickingItem',
   tableName: 'picking_items',
   properties: {
     id: { type: 'uuid', primary: true },
@@ -95,6 +100,7 @@ export const PickingItemSchema = new EntitySchema<PickingItem>({
 
 export const PickingSessionSchema = new EntitySchema<PickingSession>({
   class: PickingSession,
+  name: 'PickingSession',
   tableName: 'picking_sessions',
   properties: {
     id: { type: 'uuid', primary: true },

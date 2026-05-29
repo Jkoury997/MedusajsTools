@@ -14,8 +14,11 @@ export class Store {
   updatedAt: Date = new Date();
 }
 
+Object.defineProperty(Store, 'name', { value: 'Store' });
+
 export const StoreSchema = new EntitySchema<Store>({
   class: Store,
+  name: 'Store',
   tableName: 'stores',
   properties: {
     id: { type: 'uuid', primary: true },
