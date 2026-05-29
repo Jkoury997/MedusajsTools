@@ -104,6 +104,8 @@ export async function GET(req: NextRequest) {
           faltanteResolution: completedSession.faltanteResolution,
           faltanteResolvedAt: completedSession.faltanteResolvedAt,
           faltanteNotes: completedSession.faltanteNotes,
+          voucherCode: completedSession.voucherCode,
+          voucherValue: completedSession.voucherValue,
           missingItems: completedSession.items.getItems()
             .filter((i: any) => {
               const missing = i.quantityMissing || 0;
