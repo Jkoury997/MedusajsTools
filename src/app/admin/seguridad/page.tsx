@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { Card, Badge, Button, Alert, Spinner, Input, ConfirmDialog } from '@/components/ui';
+import { AdminNav } from '@/components/AdminNav';
 import { formatDate } from '@/lib/format';
 
 interface ApiKeyInfo {
@@ -108,18 +108,13 @@ export default function AdminSeguridadPage() {
 
   return (
     <div className="min-h-screen pb-8">
+      <AdminNav />
+
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-gray-900 text-white px-4 py-3 -mx-4 sm:-mx-6 lg:-mx-8">
-        <div className="flex items-center gap-3">
-          <Link href="/admin/usuarios" className="text-gray-400 hover:text-white">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </Link>
-          <div>
-            <h1 className="text-lg font-bold">Seguridad</h1>
-            <p className="text-xs text-gray-400">API keys y configuración</p>
-          </div>
+      <div className="bg-gray-900 text-white px-4 py-3 -mx-4 sm:-mx-6 lg:-mx-8 rounded-lg">
+        <div>
+          <h1 className="text-lg font-bold">Seguridad</h1>
+          <p className="text-xs text-gray-400">API keys y configuración</p>
         </div>
       </div>
 

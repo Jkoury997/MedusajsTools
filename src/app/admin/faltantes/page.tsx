@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, Badge, Button, Alert, Spinner } from '@/components/ui';
+import { AdminNav } from '@/components/AdminNav';
 
 interface ProductRankingItem {
   sku: string | null;
@@ -56,11 +56,7 @@ export default function FaltantesPage() {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>('week');
 
-  useEffect(() => {
-    fetchStats();
-  }, [period]);
-
-  async function fetchStats() {
+  const fetchStats = useCallback(async () => {
     setLoading(true);
     try {
       const now = new Date();
@@ -93,18 +89,19 @@ export default function FaltantesPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [period]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <AdminNav />
+
       {/* Header */}
-      <div className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
-          <Link href="/admin" className="text-gray-600 hover:text-gray-900">
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </Link>
+      <div className="bg-white border-b">
+        <div className="max-w-lg mx-auto px-4 py-3">
           <h1 className="text-lg font-bold text-gray-900">Productos Faltantes</h1>
         </div>
       </div>

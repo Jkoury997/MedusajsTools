@@ -1023,6 +1023,12 @@ export default function GestionPage() {
             />
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
+            <Link
+              href="/admin/auditoria"
+              className="px-2.5 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            >
+              Admin
+            </Link>
             <button
               onClick={() => fetchData(activeTab)}
               className="p-2 text-gray-400 hover:text-gray-600 active:bg-gray-100 rounded-lg"

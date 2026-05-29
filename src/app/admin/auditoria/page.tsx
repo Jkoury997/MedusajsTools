@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { AuthCard, PinInput, Button, Badge, Card, Alert, Spinner, type BadgeTone } from '@/components/ui';
+import { Button, Badge, Card, Alert, Spinner, type BadgeTone } from '@/components/ui';
+import { AdminNav } from '@/components/AdminNav';
 
 interface AuditEntry {
   _id: string;
@@ -71,12 +72,6 @@ function formatDateFull(dateStr: string): string {
 }
 
 export default function AuditoriaPage() {
-  // Auth
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [adminPin, setAdminPin] = useState('');
-  const [authError, setAuthError] = useState('');
-  const [authLoading, setAuthLoading] = useState(false);
-
   // Data
   const [logs, setLogs] = useState<AuditEntry[]>([]);
   const [total, setTotal] = useState(0);
@@ -122,65 +117,8 @@ export default function AuditoriaPage() {
   }, [dateFilter, actionFilter]);
 
   useEffect(() => {
-    if (isAuthenticated) fetchLogs();
-  }, [isAuthenticated, fetchLogs]);
-
-  async function handleAdminAuth(e: React.FormEvent) {
-    e.preventDefault();
-    setAuthError('');
-    if (!adminPin || adminPin.length < 4) {
-      setAuthError('Ingresá un PIN de 4 a 6 dígitos');
-      return;
-    }
-    setAuthLoading(true);
-    try {
-      const res = await fetch('/api/picking/admin-auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: adminPin }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setIsAuthenticated(true);
-      } else {
-        setAuthError('PIN incorrecto');
-        setAdminPin('');
-      }
-    } catch {
-      setAuthError('Error de conexion');
-    } finally {
-      setAuthLoading(false);
-    }
-  }
-
-  // PIN Gate
-  if (!isAuthenticated) {
-    return (
-      <AuthCard
-        icon="🛡️"
-        title="Log de Auditoría"
-        subtitle="Ingresá el PIN de administrador"
-        footer={
-          <Link href="/" className="text-sm text-gray-400 hover:text-gray-600">
-            Volver al inicio
-          </Link>
-        }
-      >
-        <form onSubmit={handleAdminAuth} className="space-y-4">
-          <PinInput
-            value={adminPin}
-            onChange={(e) => setAdminPin(e.target.value.replace(/\D/g, ''))}
-            placeholder="••••"
-            autoFocus
-          />
-          {authError && <Alert tone="error">{authError}</Alert>}
-          <Button type="submit" fullWidth loading={authLoading} disabled={authLoading || adminPin.length < 4}>
-            {authLoading ? 'Verificando…' : 'Ingresar'}
-          </Button>
-        </form>
-      </AuthCard>
-    );
-  }
+    fetchLogs();
+  }, [fetchLogs]);
 
   // Agrupar logs por fecha
   const logsByDate = logs.reduce<Record<string, AuditEntry[]>>((acc, log) => {
@@ -192,28 +130,13 @@ export default function AuditoriaPage() {
 
   return (
     <div className="min-h-screen pb-8">
+      <AdminNav />
+
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-white border-b px-4 py-3 -mx-4 sm:-mx-6 lg:-mx-8">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="text-gray-500 hover:text-gray-700">
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </Link>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">Log de Auditoría</h1>
-              <p className="text-xs text-gray-500">{total} evento{total !== 1 ? 's' : ''}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link href="/admin/faltantes" className="text-sm text-brand-600 font-medium hover:text-brand-700">
-              Faltantes
-            </Link>
-            <Link href="/admin/historial" className="text-sm text-brand-600 font-medium hover:text-brand-700">
-              Métricas
-            </Link>
-          </div>
+      <div className="px-4 py-3 -mx-4 sm:-mx-6 lg:-mx-8 border-b">
+        <div>
+          <h1 className="text-lg font-bold text-gray-900">Log de Auditoría</h1>
+          <p className="text-xs text-gray-500">{total} evento{total !== 1 ? 's' : ''}</p>
         </div>
       </div>
 
