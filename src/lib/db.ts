@@ -28,12 +28,16 @@ function needsSsl(url: string): boolean {
 
 export function buildOrmOptions(): Options {
   const url = config.databaseUrl;
+  // En serverless (Vercel) hay muchas instancias efímeras; un pool chico por
+  // instancia evita agotar las conexiones de Postgres. En un server always-on
+  // (Railway/local) se puede usar un pool más grande.
+  const isServerless = !!process.env.VERCEL;
   return {
     clientUrl: url,
     entities,
     discovery: { disableDynamicFileAccess: true },
     debug: false,
-    pool: { min: 0, max: 10 },
+    pool: { min: 0, max: isServerless ? 3 : 10 },
     driverOptions: needsSsl(url)
       ? { connection: { ssl: { rejectUnauthorized: false } } }
       : {},
