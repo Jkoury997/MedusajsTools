@@ -8,13 +8,35 @@ import { config } from './config';
  * (necesario para que ande bien con el bundler de Next / serverless): pasamos
  * las entidades explícitamente vía EntitySchema.
  */
+/**
+ * Decide si la conexión necesita SSL. Lo prendemos para hosts remotos
+ * (p. ej. la URL pública de Railway) y lo apagamos para local y la red interna
+ * de Railway, donde no hace falta. Evita el típico error "SSL required" /
+ * "self signed certificate" al conectar desde afuera.
+ */
+function needsSsl(url: string): boolean {
+  let host = '';
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+  if (host === 'localhost' || host === '127.0.0.1') return false;
+  if (host.endsWith('.railway.internal')) return false; // red interna de Railway
+  return true;
+}
+
 export function buildOrmOptions(): Options {
+  const url = config.databaseUrl;
   return {
-    clientUrl: config.databaseUrl,
+    clientUrl: url,
     entities,
     discovery: { disableDynamicFileAccess: true },
     debug: false,
     pool: { min: 0, max: 10 },
+    driverOptions: needsSsl(url)
+      ? { connection: { ssl: { rejectUnauthorized: false } } }
+      : {},
   };
 }
 
