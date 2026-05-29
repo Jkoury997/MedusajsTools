@@ -31,10 +31,9 @@ export async function POST(req: NextRequest) {
     const fulfillments = order.fulfillments || [];
     const fulfillmentStatus = order.fulfillment_status || '';
     const shippingMethod = order.shipping_methods?.[0];
-    const shippingOptionId = shippingMethod?.shipping_option_id;
 
     // Verificar si ya fue enviado a tienda (para store pickup)
-    if (isStorePickup(shippingOptionId)) {
+    if (isStorePickup(shippingMethod?.name)) {
       const existingShipment = await em.findOne(StoreShipment, { orderId });
       if (existingShipment) {
         return NextResponse.json(
@@ -62,7 +61,7 @@ export async function POST(req: NextRequest) {
     // Para pedidos de RETIRO EN TIENDA: no llamar a Medusa shipment API
     // (Medusa trata pickup shipments como delivered automáticamente).
     // En su lugar, registrar el envío a tienda en MongoDB.
-    if (isStorePickup(shippingOptionId)) {
+    if (isStorePickup(shippingMethod?.name)) {
       const storeData = shippingMethod?.data?.store;
 
       const shipment = em.create(StoreShipment, {

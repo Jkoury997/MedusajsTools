@@ -4,6 +4,7 @@ import { getEm } from '@/lib/db';
 import { StoreDelivery, User } from '@/lib/entities';
 import { requireSession } from '@/lib/session';
 import { errorResponse } from '@/lib/http';
+import { isStorePickup } from '@/lib/shipping';
 
 // GET /api/picking/store-orders?storeId=xxx - Pedidos de retiro para una tienda
 export async function GET(req: NextRequest) {
@@ -43,12 +44,9 @@ export async function GET(req: NextRequest) {
       if (!methods || methods.length === 0) return false;
 
       const method = methods[0];
-      const methodName = (method.name || '').toLowerCase();
 
       // Verificar que sea envío a tienda
-      const isStorePickup = methodName.includes('retiro') || methodName.includes('tienda') ||
-        methodName.includes('pickup') || methodName.includes('sucursal');
-      if (!isStorePickup) return false;
+      if (!isStorePickup(method.name)) return false;
 
       // Debe tener data.store con ID para ser retiro en tienda real
       const store = method.data?.store;

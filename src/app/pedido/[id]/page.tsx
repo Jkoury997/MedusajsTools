@@ -108,7 +108,7 @@ function formatProvince(provinceCode: string): string {
 function isFactoryPickup(order: Order): boolean {
   const methods = order.shipping_methods;
   if (!methods || methods.length === 0) return false;
-  return checkFactoryPickup(methods[0].shipping_option_id);
+  return checkFactoryPickup(methods[0].name);
 }
 
 // Detecta si el envío es retiro en tienda y devuelve datos de la tienda
@@ -116,10 +116,8 @@ function getStorePickupInfo(order: Order): { storeName: string; storeAddress: st
   const methods = order.shipping_methods;
   if (!methods || methods.length === 0) return null;
   const method = methods[0];
-  const name = (method.name || '').toLowerCase();
-  // Detectar por nombre: "retiro", "tienda", "pickup", "sucursal"
-  const isStorePickup = name.includes('retiro') || name.includes('tienda') || name.includes('pickup') || name.includes('sucursal');
-  if (!isStorePickup) return null;
+  // Detectar por nombre del método de envío
+  if (!checkStorePickup(method.name)) return null;
   // Intentar obtener datos de la tienda desde data.store
   const store = method.data?.store;
   if (store?.name && store?.address) {
@@ -434,7 +432,7 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
   const orderIsCash = isCashPayment(order as any);
 
   // Detectar si es retiro en tienda y si ya fue enviado a tienda
-  const orderIsStorePickup = checkStorePickup(order.shipping_methods?.[0]?.shipping_option_id);
+  const orderIsStorePickup = checkStorePickup(order.shipping_methods?.[0]?.name);
   let orderIsSentToStore = false;
   if (orderIsStorePickup) {
     try {

@@ -73,10 +73,9 @@ export async function POST(req: NextRequest) {
 
       const methods = orderData.order.shipping_methods || [];
       const method = methods[0];
-      const shippingOptionId = method?.shipping_option_id;
 
       // Si es picker, solo puede entregar retiro en fábrica
-      if (userRole === 'picker' && !isFactoryPickup(shippingOptionId)) {
+      if (userRole === 'picker' && !isFactoryPickup(method?.name)) {
         return NextResponse.json(
           { success: false, error: 'Solo podés entregar pedidos de retiro en fábrica' },
           { status: 403 }
@@ -84,7 +83,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Para retiro en tienda, verificar que el pedido haya sido enviado a la tienda
-      if (checkStorePickup(shippingOptionId)) {
+      if (checkStorePickup(method?.name)) {
         const storeShipment = await em.findOne(StoreShipment, { orderId });
         if (!storeShipment) {
           return NextResponse.json(
