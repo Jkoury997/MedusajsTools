@@ -757,6 +757,21 @@ function PorEnviarCard({ order, onRefresh }: { order: OrderData; onRefresh: () =
           </button>
         )}
 
+        {/* Imprimir etiqueta de Mercado Envíos (órdenes de Mercado Libre) */}
+        {order.isMercadoLibre && order.mlShipmentId && (
+          <a
+            href={`/api/picking/ml-label?shipmentId=${order.mlShipmentId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full mt-3 py-2 bg-yellow-400 text-gray-900 rounded-xl text-sm font-bold active:bg-yellow-500 flex items-center justify-center gap-1.5"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+            </svg>
+            Etiqueta Mercado Envíos
+          </a>
+        )}
+
         {shipError && <Alert tone="error" className="mt-3">{shipError}</Alert>}
 
         {/* Marcar como enviado */}
@@ -943,6 +958,7 @@ export default function GestionPage() {
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
   const [search, setSearch] = useState('');
+  const [onlyMl, setOnlyMl] = useState(false);
 
   const fetchData = useCallback(async (tab: TabId) => {
     setLoading(true);
@@ -986,8 +1002,12 @@ export default function GestionPage() {
     }
   }
 
-  // Filter orders by search
+  // Cantidad de órdenes ML en la pestaña actual (para el contador del filtro)
+  const mlCount = orders.filter(o => o.isMercadoLibre).length;
+
+  // Filter orders by search + filtro "Solo Mercado Libre"
   const filteredOrders = orders.filter(o => {
+    if (onlyMl && !o.isMercadoLibre) return false;
     if (!search.trim()) return true;
     const q = search.toLowerCase().trim();
     return (
@@ -1064,6 +1084,25 @@ export default function GestionPage() {
               </svg>
             </button>
           )}
+        </div>
+
+        {/* Filtro: Solo Mercado Libre */}
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            onClick={() => setOnlyMl(v => !v)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-colors border ${
+              onlyMl
+                ? 'bg-yellow-400 text-gray-900 border-yellow-500'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            }`}
+            aria-pressed={onlyMl}
+          >
+            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15l-4-4 1.41-1.41L11 14.17l6.59-6.59L19 9l-8 8z"/>
+            </svg>
+            Solo Mercado Libre
+            <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] ${onlyMl ? 'bg-gray-900/15' : 'bg-gray-100'}`}>{mlCount}</span>
+          </button>
         </div>
       </div>
 
