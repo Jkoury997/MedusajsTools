@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { AuthCard, PinInput, Button, Badge, Card, Alert, Spinner, Tabs } from '@/components/ui';
+import { formatDate } from '@/lib/format';
 
 interface HistorySession {
   _id: string;
@@ -69,16 +71,6 @@ function formatDurationLong(seconds: number): string {
   const secs = seconds % 60;
   if (mins === 0) return `${secs}s`;
   return `${mins}m ${secs}s`;
-}
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 // Colores para avatares de pickers
@@ -185,46 +177,29 @@ export default function HistorialPage() {
   // PIN Gate
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center -mt-16">
-        <div className="bg-white rounded-2xl shadow-lg border p-6 w-full max-w-xs">
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <svg className="w-8 h-8 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-            </div>
-            <h1 className="text-lg font-bold text-gray-900">Historial de Picking</h1>
-            <p className="text-sm text-gray-500 mt-1">Ingresa el PIN de administrador</p>
-          </div>
-          <form onSubmit={handleAdminAuth} className="space-y-4">
-            <input
-              type="password"
-              value={adminPin}
-              onChange={(e) => setAdminPin(e.target.value.replace(/\D/g, ''))}
-              placeholder="----"
-              maxLength={6}
-              inputMode="numeric"
-              autoFocus
-              className="w-full px-4 py-3 border-2 rounded-xl text-2xl text-center tracking-[0.5em] focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-            />
-            {authError && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-center">
-                <span className="text-red-700 text-sm">{authError}</span>
-              </div>
-            )}
-            <button
-              type="submit"
-              disabled={authLoading || adminPin.length < 4}
-              className="w-full bg-purple-600 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors hover:bg-purple-700"
-            >
-              {authLoading ? 'Verificando...' : 'Ingresar'}
-            </button>
-          </form>
-          <Link href="/" className="block text-center text-sm text-gray-400 hover:text-gray-600 mt-4">
+      <AuthCard
+        icon="📊"
+        title="Historial de Picking"
+        subtitle="Ingresá el PIN de administrador"
+        footer={
+          <Link href="/" className="text-sm text-gray-400 hover:text-gray-600">
             Volver al inicio
           </Link>
-        </div>
-      </div>
+        }
+      >
+        <form onSubmit={handleAdminAuth} className="space-y-4">
+          <PinInput
+            value={adminPin}
+            onChange={(e) => setAdminPin(e.target.value.replace(/\D/g, ''))}
+            placeholder="••••"
+            autoFocus
+          />
+          {authError && <Alert tone="error">{authError}</Alert>}
+          <Button type="submit" fullWidth loading={authLoading} disabled={authLoading || adminPin.length < 4}>
+            {authLoading ? 'Verificando…' : 'Ingresar'}
+          </Button>
+        </form>
+      </AuthCard>
     );
   }
 
@@ -242,18 +217,18 @@ export default function HistorialPage() {
               </svg>
             </Link>
             <div>
-              <h1 className="text-lg font-bold text-gray-900">Metricas de Picking</h1>
+              <h1 className="text-lg font-bold text-gray-900">Métricas de Picking</h1>
               <p className="text-xs text-gray-500">{total} registro{total !== 1 ? 's' : ''} {periodLabel}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/admin/faltantes" className="text-sm text-red-600 font-medium hover:text-red-700">
+            <Link href="/admin/faltantes" className="text-sm text-brand-600 font-medium hover:text-brand-700">
               Faltantes
             </Link>
-            <Link href="/admin/auditoria" className="text-sm text-amber-600 font-medium hover:text-amber-700">
-              Auditoria
+            <Link href="/admin/auditoria" className="text-sm text-brand-600 font-medium hover:text-brand-700">
+              Auditoría
             </Link>
-            <Link href="/admin/usuarios" className="text-sm text-purple-600 font-medium hover:text-purple-700">
+            <Link href="/admin/usuarios" className="text-sm text-brand-600 font-medium hover:text-brand-700">
               Usuarios
             </Link>
           </div>
@@ -268,53 +243,31 @@ export default function HistorialPage() {
             { key: 'week', label: 'Semana' },
             { key: 'all', label: 'Todo' },
           ].map(f => (
-            <button
+            <Button
               key={f.key}
+              size="sm"
+              variant={dateFilter === f.key ? 'primary' : 'secondary'}
               onClick={() => setDateFilter(f.key)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                dateFilter === f.key
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
             >
               {f.label}
-            </button>
+            </Button>
           ))}
         </div>
 
         {/* Tabs Dashboard / Log */}
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'dashboard'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Dashboard
-          </button>
-          <button
-            onClick={() => setActiveTab('log')}
-            className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'log'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Log
-          </button>
-        </div>
+        <Tabs
+          tabs={[
+            { id: 'dashboard', label: 'Dashboard' },
+            { id: 'log', label: 'Log' },
+          ]}
+          active={activeTab}
+          onChange={(id) => setActiveTab(id as 'dashboard' | 'log')}
+        />
 
         {/* Loading */}
         {loading && (
-          <div className="space-y-3">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="bg-white rounded-xl border p-4 animate-pulse">
-                <div className="h-5 bg-gray-200 rounded w-1/3 mb-2" />
-                <div className="h-4 bg-gray-100 rounded w-2/3" />
-              </div>
-            ))}
+          <div className="flex justify-center py-12 text-brand-500">
+            <Spinner className="w-8 h-8" />
           </div>
         )}
 
@@ -345,10 +298,10 @@ export default function HistorialPage() {
               </div>
               {/* Barra de tiempo total */}
               {periodStats.totalDurationSeconds > 0 && (
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 mt-2 text-center">
+                <Card className="mt-2 text-center bg-brand-50 border-brand-100">
                   <p className="text-xs text-gray-500 mb-0.5">Tiempo total de picking</p>
                   <p className="text-xl font-bold text-gray-800">{formatDurationLong(periodStats.totalDurationSeconds)}</p>
-                </div>
+                </Card>
               )}
             </div>
 
@@ -358,7 +311,7 @@ export default function HistorialPage() {
                 <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Rendimiento por Picker</h2>
                 <div className="space-y-2">
                   {pickerStats.map((picker, idx) => (
-                    <div key={picker.userId} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <Card key={picker.userId} padding={false} className="overflow-hidden">
                       {/* Header del picker (clickeable para expandir) */}
                       <button
                         onClick={() => setExpandedPicker(expandedPicker === picker.userId ? null : picker.userId)}
@@ -441,7 +394,7 @@ export default function HistorialPage() {
                           )}
                         </div>
                       )}
-                    </div>
+                    </Card>
                   ))}
                 </div>
               </div>
@@ -463,17 +416,15 @@ export default function HistorialPage() {
               <div className="space-y-2">
                 {sessions.map(s => (
                   <Link key={s._id} href={`/pedido/${s.orderId}`} className="block">
-                    <div className={`bg-white rounded-xl border overflow-hidden ${
-                      s.status === 'cancelled' ? 'border-red-200 opacity-70' : 'border-gray-200'
-                    }`}>
+                    <Card padding={false} className={s.status === 'cancelled' ? 'border-red-200 opacity-70' : ''}>
                       <div className="p-3">
                         <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center gap-2">
                             <span className="text-base font-bold text-gray-900">#{s.orderDisplayId}</span>
                             {s.status === 'cancelled' ? (
-                              <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-semibold">Cancelado</span>
+                              <Badge tone="danger">Cancelado</Badge>
                             ) : (
-                              <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-semibold">Completado</span>
+                              <Badge tone="success">Completado</Badge>
                             )}
                           </div>
                           <span className="text-sm font-mono font-bold text-gray-700">
@@ -483,7 +434,7 @@ export default function HistorialPage() {
 
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-[10px] font-bold">
+                            <div className="w-6 h-6 bg-brand-500 rounded-full flex items-center justify-center text-white text-[10px] font-bold">
                               {s.userName.charAt(0).toUpperCase()}
                             </div>
                             <span className="text-sm text-gray-600">{s.userName}</span>
@@ -506,7 +457,7 @@ export default function HistorialPage() {
                           </div>
                         )}
                       </div>
-                    </div>
+                    </Card>
                   </Link>
                 ))}
               </div>
@@ -555,13 +506,5 @@ function MetricRow({ label, value, good, warn }: { label: string; value: string;
 }
 
 function EmptyState() {
-  return (
-    <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-      <svg className="mx-auto h-12 w-12 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-      <h3 className="text-sm font-medium text-gray-900">Sin registros</h3>
-      <p className="text-xs text-gray-500 mt-1">No hay pickings en este periodo</p>
-    </div>
-  );
+  return <Alert tone="info">No hay pickings en este período.</Alert>;
 }

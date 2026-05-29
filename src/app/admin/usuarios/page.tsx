@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { AuthCard, PinInput, Button, Badge, Card, Alert, Spinner, Input, ConfirmDialog } from '@/components/ui';
 
 interface PickingUser {
   _id: string;
@@ -57,6 +58,7 @@ export default function AdminUsuariosPage() {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -273,10 +275,7 @@ export default function AdminUsuariosPage() {
   }
 
   async function handleDelete(userId: string, userName: string) {
-    if (!confirm(`¿Seguro que querés eliminar a "${userName}"? Esta acción no se puede deshacer.`)) {
-      return;
-    }
-
+    setConfirmDelete(null);
     setDeleting(userId);
     try {
       const res = await fetch(`/api/picking/users/${userId}`, {
@@ -300,53 +299,29 @@ export default function AdminUsuariosPage() {
   // PIN Gate
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center -mt-16">
-        <div className="bg-white rounded-2xl shadow-lg border p-6 w-full max-w-xs">
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <svg className="w-8 h-8 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-            </div>
-            <h1 className="text-lg font-bold text-gray-900">Admin Picking</h1>
-            <p className="text-sm text-gray-500 mt-1">Ingresá el PIN de administrador</p>
-          </div>
-
-          <form onSubmit={handleAdminAuth} className="space-y-4">
-            <input
-              type="password"
-              value={adminPin}
-              onChange={(e) => setAdminPin(e.target.value.replace(/\D/g, ''))}
-              placeholder="••••"
-              maxLength={6}
-              inputMode="numeric"
-              autoFocus
-              className="w-full px-4 py-3 border-2 rounded-xl text-2xl text-center tracking-[0.5em] focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-            />
-
-            {authError && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-center">
-                <span className="text-red-700 text-sm">{authError}</span>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={authLoading || adminPin.length < 4}
-              className="w-full bg-purple-600 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors hover:bg-purple-700"
-            >
-              {authLoading ? 'Verificando...' : 'Ingresar'}
-            </button>
-          </form>
-
-          <Link
-            href="/"
-            className="block text-center text-sm text-gray-400 hover:text-gray-600 mt-4"
-          >
+      <AuthCard
+        icon="👥"
+        title="Admin Picking"
+        subtitle="Ingresá el PIN de administrador"
+        footer={
+          <Link href="/" className="text-sm text-gray-400 hover:text-gray-600">
             Volver al inicio
           </Link>
-        </div>
-      </div>
+        }
+      >
+        <form onSubmit={handleAdminAuth} className="space-y-4">
+          <PinInput
+            value={adminPin}
+            onChange={(e) => setAdminPin(e.target.value.replace(/\D/g, ''))}
+            placeholder="••••"
+            autoFocus
+          />
+          {authError && <Alert tone="error">{authError}</Alert>}
+          <Button type="submit" fullWidth loading={authLoading} disabled={authLoading || adminPin.length < 4}>
+            {authLoading ? 'Verificando…' : 'Ingresar'}
+          </Button>
+        </form>
+      </AuthCard>
     );
   }
 
@@ -366,71 +341,60 @@ export default function AdminUsuariosPage() {
               <p className="text-xs text-gray-500">{users.length} usuario{users.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
-          <button
-            onClick={openCreate}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1"
-          >
+          <Button size="sm" onClick={openCreate}>
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             Nuevo
-          </button>
+          </Button>
         </div>
       </div>
 
       <div className="mt-4">
         {/* Mensaje de éxito */}
         {success && (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 flex items-center gap-2">
-            <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            <span className="text-green-800 text-sm">{success}</span>
+          <div className="mb-4">
+            <Alert tone="success">{success}</Alert>
           </div>
         )}
 
         {/* Formulario */}
         {showForm && (
-          <div className="bg-white rounded-xl shadow-sm border p-4 mb-4">
+          <Card className="mb-4">
             <h2 className="text-sm font-bold text-gray-900 mb-3">
               {editingUser ? `Editar: ${editingUser.name}` : 'Nuevo Usuario'}
             </h2>
 
             <form onSubmit={handleSubmit} className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-gray-700">Nombre</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Ej: Juan"
-                  className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  autoFocus
-                />
-              </div>
+              <Input
+                label="Nombre"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ej: Juan"
+                autoFocus
+              />
 
               {/* Tipo de usuario */}
               <div>
-                <label className="text-xs font-medium text-gray-700">Tipo</label>
-                <div className="flex gap-2 mt-1">
-                  <button
+                <label className="block text-xs font-medium text-gray-600 mb-1">Tipo</label>
+                <div className="flex gap-2">
+                  <Button
                     type="button"
+                    fullWidth
+                    variant={role === 'picker' ? 'primary' : 'secondary'}
                     onClick={() => setRole('picker')}
-                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      role === 'picker' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
-                    }`}
                   >
                     Picker
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    fullWidth
+                    variant={role === 'store' ? 'success' : 'secondary'}
                     onClick={() => setRole('store')}
-                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      role === 'store' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600'
-                    }`}
                   >
                     Tienda
-                  </button>
+                  </Button>
                 </div>
               </div>
 
@@ -460,28 +424,29 @@ export default function AdminUsuariosPage() {
                   {showNewStore ? (
                     <div className="space-y-2 bg-white rounded-lg p-3 border border-emerald-200">
                       <p className="text-xs text-gray-500 font-medium">Crear nueva tienda</p>
-                      <input
+                      <Input
                         type="text"
                         value={newStoreName}
                         onChange={(e) => setNewStoreName(e.target.value)}
                         placeholder="Nombre de la tienda"
-                        className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                       />
-                      <input
+                      <Input
                         type="text"
                         value={newStoreAddress}
                         onChange={(e) => setNewStoreAddress(e.target.value)}
                         placeholder="Dirección (opcional)"
-                        className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                       />
-                      <button
+                      <Button
                         type="button"
+                        size="sm"
+                        fullWidth
+                        variant="success"
+                        loading={savingStore}
                         onClick={handleCreateStore}
                         disabled={savingStore || !newStoreName.trim()}
-                        className="w-full bg-emerald-600 text-white py-2 rounded-lg text-xs font-medium disabled:opacity-50 hover:bg-emerald-700 transition-colors"
                       >
-                        {savingStore ? 'Creando...' : 'Crear y seleccionar'}
-                      </button>
+                        {savingStore ? 'Creando…' : 'Crear y seleccionar'}
+                      </Button>
                     </div>
                   ) : (
                     <>
@@ -510,17 +475,13 @@ export default function AdminUsuariosPage() {
               )}
 
               <div>
-                <label className="text-xs font-medium text-gray-700">
+                <label className="block text-xs font-medium text-gray-600 mb-1">
                   PIN (4 a 6 dígitos){editingUser && ' - dejar vacío para no cambiar'}
                 </label>
-                <input
-                  type="password"
+                <PinInput
                   value={pin}
                   onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-                  placeholder={editingUser ? '****' : '1234'}
-                  maxLength={6}
-                  inputMode="numeric"
-                  className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 tracking-widest text-center text-xl"
+                  placeholder={editingUser ? '••••' : '1234'}
                 />
               </div>
 
@@ -530,7 +491,7 @@ export default function AdminUsuariosPage() {
                     type="button"
                     onClick={() => setActive(!active)}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      active ? 'bg-green-500' : 'bg-gray-300'
+                      active ? 'bg-emerald-500' : 'bg-gray-300'
                     }`}
                   >
                     <span
@@ -543,53 +504,30 @@ export default function AdminUsuariosPage() {
                 </div>
               )}
 
-              {error && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-2">
-                  <span className="text-red-800 text-xs">{error}</span>
-                </div>
-              )}
+              {error && <Alert tone="error">{error}</Alert>}
 
               <div className="flex gap-2">
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-                >
-                  {saving ? 'Guardando...' : editingUser ? 'Guardar Cambios' : 'Crear Usuario'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm"
-                >
+                <Button type="submit" fullWidth loading={saving} disabled={saving}>
+                  {saving ? 'Guardando…' : editingUser ? 'Guardar Cambios' : 'Crear Usuario'}
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>
                   Cancelar
-                </button>
+                </Button>
               </div>
             </form>
-          </div>
+          </Card>
         )}
 
         {/* Loading */}
         {loading && (
-          <div className="space-y-3">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="bg-white rounded-xl border p-4 animate-pulse">
-                <div className="h-5 bg-gray-200 rounded w-1/3 mb-2"></div>
-                <div className="h-4 bg-gray-100 rounded w-1/2"></div>
-              </div>
-            ))}
+          <div className="flex justify-center py-12 text-brand-500">
+            <Spinner className="w-8 h-8" />
           </div>
         )}
 
         {/* Lista de usuarios */}
         {!loading && users.length === 0 && !showForm && (
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-            <svg className="mx-auto h-12 w-12 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-            <h3 className="text-sm font-medium text-gray-900">No hay usuarios</h3>
-            <p className="text-xs text-gray-500 mt-1">Creá un usuario con PIN para empezar</p>
-          </div>
+          <Alert tone="info">No hay usuarios. Creá uno con PIN para empezar.</Alert>
         )}
 
         {!loading && users.length > 0 && (
@@ -597,35 +535,23 @@ export default function AdminUsuariosPage() {
             {users.map(user => {
               const stats = userStats[user._id];
               return (
-                <div
-                  key={user._id}
-                  className={`bg-white rounded-xl shadow-sm border overflow-hidden ${!user.active ? 'opacity-60' : ''}`}
-                >
-                  <div className="p-4">
+                <Card key={user._id} className={!user.active ? 'opacity-60' : ''}>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${
-                          !user.active ? 'bg-gray-400' : user.role === 'store' ? 'bg-emerald-500' : 'bg-blue-500'
+                          !user.active ? 'bg-gray-400' : user.role === 'store' ? 'bg-emerald-500' : 'bg-brand-500'
                         }`}>
                           {user.role === 'store' ? '🏪' : user.name.charAt(0).toUpperCase()}
                         </div>
                         <div>
                           <p className="font-medium text-gray-900">{user.name}</p>
                           <div className="flex items-center gap-1.5">
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              user.active
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-gray-100 text-gray-500'
-                            }`}>
+                            <Badge tone={user.active ? 'success' : 'gray'}>
                               {user.active ? 'Activo' : 'Inactivo'}
-                            </span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              user.role === 'store'
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-blue-100 text-blue-700'
-                            }`}>
+                            </Badge>
+                            <Badge tone={user.role === 'store' ? 'success' : 'info'}>
                               {user.role === 'store' ? `Tienda: ${user.storeName || '?'}` : 'Picker'}
-                            </span>
+                            </Badge>
                           </div>
                         </div>
                       </div>
@@ -639,15 +565,12 @@ export default function AdminUsuariosPage() {
                           </svg>
                         </button>
                         <button
-                          onClick={() => handleDelete(user._id, user.name)}
+                          onClick={() => setConfirmDelete({ id: user._id, name: user.name })}
                           disabled={deleting === user._id}
                           className="text-gray-400 hover:text-red-600 p-2 disabled:opacity-50"
                         >
                           {deleting === user._id ? (
-                            <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                            </svg>
+                            <Spinner className="w-5 h-5" />
                           ) : (
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -659,7 +582,7 @@ export default function AdminUsuariosPage() {
 
                     {/* Stats */}
                     {stats && (
-                      <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t">
+                      <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100">
                         <div className="text-center">
                           <p className="text-lg font-bold text-gray-900">{stats.completedSessions}</p>
                           <p className="text-xs text-gray-500">Pedidos</p>
@@ -669,18 +592,35 @@ export default function AdminUsuariosPage() {
                           <p className="text-xs text-gray-500">Items</p>
                         </div>
                         <div className="text-center">
-                          <p className="text-lg font-bold text-blue-600">{formatDuration(stats.avgDurationSeconds)}</p>
+                          <p className="text-lg font-bold text-brand-600">{formatDuration(stats.avgDurationSeconds)}</p>
                           <p className="text-xs text-gray-500">Promedio</p>
                         </div>
                       </div>
                     )}
-                  </div>
-                </div>
+                </Card>
               );
             })}
           </div>
         )}
       </div>
+
+      {/* Confirmación de borrado (reemplaza confirm() nativo) */}
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        title="Eliminar usuario"
+        message={
+          confirmDelete
+            ? `¿Seguro que querés eliminar a "${confirmDelete.name}"? Esta acción no se puede deshacer.`
+            : ''
+        }
+        confirmLabel="Eliminar"
+        tone="danger"
+        loading={confirmDelete ? deleting === confirmDelete.id : false}
+        onConfirm={() => {
+          if (confirmDelete) handleDelete(confirmDelete.id, confirmDelete.name);
+        }}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   );
 }

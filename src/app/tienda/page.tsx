@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { AuthCard, PinInput, Button, Input, Alert, Card, Badge, Tabs, ConfirmDialog } from '@/components/ui';
+import { formatPrice, formatDate } from '@/lib/format';
 
 interface StoreUser {
   id: string;
@@ -55,23 +57,6 @@ interface StoreOrder {
   }[];
 }
 
-function formatPrice(amount: number): string {
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 export default function TiendaPage() {
   // Auth
   const [user, setUser] = useState<StoreUser | null>(null);
@@ -93,6 +78,9 @@ export default function TiendaPage() {
   const [delivering, setDelivering] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Confirmación de entrega
+  const [confirmOrder, setConfirmOrder] = useState<StoreOrder | null>(null);
 
   // Tab: pendientes (fulfilled) / entregados (shipped)
   const [tab, setTab] = useState<'pendientes' | 'entregados'>('pendientes');
@@ -149,7 +137,7 @@ export default function TiendaPage() {
         setPin('');
       }
     } catch {
-      setAuthError('Error de conexion');
+      setAuthError('Error de conexión');
     } finally {
       setAuthLoading(false);
     }
@@ -195,11 +183,6 @@ export default function TiendaPage() {
 
   async function handleDeliver(order: StoreOrder) {
     if (!user) return;
-    const customerName = order.shipping_address?.first_name
-      ? `${order.shipping_address.first_name} ${order.shipping_address.last_name || ''}`
-      : 'el cliente';
-
-    if (!confirm(`¿Confirmas la entrega del pedido #${order.display_id} a ${customerName}?`)) return;
 
     setDelivering(order.id);
     setSuccessMsg('');
@@ -223,7 +206,7 @@ export default function TiendaPage() {
         setErrorMsg(data.error || 'Error al entregar');
       }
     } catch {
-      setErrorMsg('Error de conexion');
+      setErrorMsg('Error de conexión');
     } finally {
       setDelivering(null);
     }
@@ -232,86 +215,74 @@ export default function TiendaPage() {
   // PIN Change Gate
   if (showPinChange && pendingUser) {
     return (
-      <div className="min-h-screen flex items-center justify-center -mt-16">
-        <div className="bg-white rounded-2xl shadow-lg border p-6 w-full max-w-xs">
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <svg className="w-8 h-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-            </div>
-            <h1 className="text-lg font-bold text-gray-900">Hola {pendingUser.name}!</h1>
-            <p className="text-sm text-gray-500 mt-1">Por seguridad, cambia tu PIN a <strong>6 digitos</strong></p>
-          </div>
-          <form onSubmit={handlePinChange} className="space-y-3">
-            <div>
-              <label className="text-xs font-medium text-gray-600">Nuevo PIN (6 digitos)</label>
-              <input type="password" value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
-                placeholder="------" maxLength={6} inputMode="numeric" autoFocus
-                className="w-full mt-1 px-4 py-3 border-2 rounded-xl text-2xl text-center tracking-[0.5em] focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-600">Repetir nuevo PIN</label>
-              <input type="password" value={confirmPin} onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
-                placeholder="------" maxLength={6} inputMode="numeric"
-                className="w-full mt-1 px-4 py-3 border-2 rounded-xl text-2xl text-center tracking-[0.5em] focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
-            </div>
-            {pinChangeError && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-center">
-                <span className="text-red-700 text-sm">{pinChangeError}</span>
-              </div>
-            )}
-            <button type="submit" disabled={pinChangeLoading || newPin.length !== 6 || confirmPin.length !== 6}
-              className="w-full bg-amber-600 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 hover:bg-amber-700 transition-colors">
-              {pinChangeLoading ? 'Guardando...' : 'Cambiar PIN y continuar'}
-            </button>
-          </form>
-        </div>
-      </div>
+      <AuthCard
+        icon="🔑"
+        title={`¡Hola ${pendingUser.name}!`}
+        subtitle="Por seguridad, cambiá tu PIN a 6 dígitos"
+      >
+        <form onSubmit={handlePinChange} className="space-y-4">
+          <Input
+            label="Nuevo PIN (6 dígitos)"
+            type="password"
+            value={newPin}
+            onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+            placeholder="------"
+            maxLength={6}
+            inputMode="numeric"
+            autoFocus
+            className="text-2xl text-center tracking-[0.5em]"
+          />
+          <Input
+            label="Repetir nuevo PIN"
+            type="password"
+            value={confirmPin}
+            onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
+            placeholder="------"
+            maxLength={6}
+            inputMode="numeric"
+            className="text-2xl text-center tracking-[0.5em]"
+          />
+          {pinChangeError && <Alert tone="error">{pinChangeError}</Alert>}
+          <Button
+            type="submit"
+            fullWidth
+            size="lg"
+            loading={pinChangeLoading}
+            disabled={newPin.length !== 6 || confirmPin.length !== 6}
+          >
+            {pinChangeLoading ? 'Guardando...' : 'Cambiar PIN y continuar'}
+          </Button>
+        </form>
+      </AuthCard>
     );
   }
 
   // PIN Gate
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center -mt-16">
-        <div className="bg-white rounded-2xl shadow-lg border p-6 w-full max-w-xs">
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <span className="text-3xl">🏪</span>
-            </div>
-            <h1 className="text-lg font-bold text-gray-900">Portal de Tienda</h1>
-            <p className="text-sm text-gray-500 mt-1">Ingresa tu PIN de tienda</p>
-          </div>
-          <form onSubmit={handleAuth} className="space-y-4">
-            <input
-              type="password"
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-              placeholder="----"
-              maxLength={6}
-              inputMode="numeric"
-              autoFocus
-              className="w-full px-4 py-3 border-2 rounded-xl text-2xl text-center tracking-[0.5em] focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-            />
-            {authError && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-center">
-                <span className="text-red-700 text-sm">{authError}</span>
-              </div>
-            )}
-            <button
-              type="submit"
-              disabled={authLoading || pin.length < 4}
-              className="w-full bg-emerald-600 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors hover:bg-emerald-700"
-            >
-              {authLoading ? 'Verificando...' : 'Ingresar'}
-            </button>
-          </form>
-          <Link href="/" className="block text-center text-sm text-gray-400 hover:text-gray-600 mt-4">
+      <AuthCard
+        icon="🏪"
+        title="Portal de Tienda"
+        subtitle="Ingresá tu PIN de tienda"
+        footer={
+          <Link href="/" className="text-sm text-gray-400 hover:text-brand-600 transition-colors">
             Volver al inicio
           </Link>
-        </div>
-      </div>
+        }
+      >
+        <form onSubmit={handleAuth} className="space-y-4">
+          <PinInput
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+            placeholder="••••••"
+            autoFocus
+          />
+          {authError && <Alert tone="error">{authError}</Alert>}
+          <Button type="submit" fullWidth size="lg" loading={authLoading} disabled={pin.length < 4}>
+            {authLoading ? 'Verificando...' : 'Ingresar'}
+          </Button>
+        </form>
+      </AuthCard>
     );
   }
 
@@ -322,80 +293,62 @@ export default function TiendaPage() {
   return (
     <div className="min-h-screen pb-8">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-emerald-600 text-white px-4 py-3 -mx-4 sm:-mx-6 lg:-mx-8">
+      <div className="sticky top-0 z-10 bg-brand-500 text-white px-4 py-3.5 -mx-4 sm:-mx-6 lg:-mx-8 shadow-sm">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-bold">🏪 {user.storeName}</h1>
-            <p className="text-xs text-emerald-100">{user.name}</p>
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold truncate">🏪 {user.storeName}</h1>
+            <p className="text-xs text-white/80">{user.name}</p>
           </div>
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-white hover:bg-white/15 shrink-0"
             onClick={async () => {
               try { await fetch('/api/picking/login', { method: 'DELETE', credentials: 'include' }); } catch {}
               setUser(null); setPin(''); setOrders([]);
             }}
-            className="text-xs bg-emerald-700 hover:bg-emerald-800 px-3 py-1.5 rounded-lg transition-colors"
           >
             Salir
-          </button>
+          </Button>
         </div>
       </div>
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-5 space-y-4">
         {/* Mensajes */}
-        {successMsg && (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2">
-            <span className="text-lg">✅</span>
-            <span className="text-green-800 text-sm font-medium">{successMsg}</span>
-          </div>
-        )}
-        {errorMsg && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2">
-            <span className="text-lg">❌</span>
-            <span className="text-red-800 text-sm font-medium">{errorMsg}</span>
-          </div>
-        )}
+        {successMsg && <Alert tone="success">{successMsg}</Alert>}
+        {errorMsg && <Alert tone="error">{errorMsg}</Alert>}
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-          <button
-            onClick={() => setTab('pendientes')}
-            className={`flex-1 py-2.5 rounded-md text-sm font-medium transition-colors ${
-              tab === 'pendientes' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
-            }`}
-          >
-            Pendientes ({pendientes.length})
-          </button>
-          <button
-            onClick={() => setTab('entregados')}
-            className={`flex-1 py-2.5 rounded-md text-sm font-medium transition-colors ${
-              tab === 'entregados' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
-            }`}
-          >
-            Entregados ({entregados.length})
-          </button>
-        </div>
+        <Tabs
+          tabs={[
+            { id: 'pendientes', label: 'Pendientes', count: pendientes.length },
+            { id: 'entregados', label: 'Entregados', count: entregados.length },
+          ]}
+          active={tab}
+          onChange={(id) => setTab(id as 'pendientes' | 'entregados')}
+        />
 
         {/* Loading */}
         {loading && (
           <div className="space-y-3">
             {[1, 2, 3].map(i => (
-              <div key={i} className="bg-white rounded-xl border p-4 animate-pulse">
+              <Card key={i} className="animate-pulse">
                 <div className="h-5 bg-gray-200 rounded w-1/3 mb-2" />
                 <div className="h-4 bg-gray-100 rounded w-2/3" />
-              </div>
+              </Card>
             ))}
           </div>
         )}
 
-        {/* Lista vacia */}
+        {/* Lista vacía */}
         {!loading && displayOrders.length === 0 && (
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-            <span className="text-4xl block mb-2">{tab === 'pendientes' ? '📦' : '✅'}</span>
-            <h3 className="text-sm font-medium text-gray-900">
+          <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-10 text-center">
+            <span className="text-5xl block mb-3">{tab === 'pendientes' ? '📦' : '✅'}</span>
+            <h3 className="text-sm font-semibold text-gray-900">
               {tab === 'pendientes' ? 'No hay pedidos pendientes' : 'No hay pedidos entregados'}
             </h3>
             <p className="text-xs text-gray-500 mt-1">
-              {tab === 'pendientes' ? 'Los pedidos para retirar apareceran aca' : 'Los pedidos entregados se mostraran aca'}
+              {tab === 'pendientes' ? 'Los pedidos para retirar aparecerán acá' : 'Los pedidos entregados se mostrarán acá'}
             </p>
           </div>
         )}
@@ -416,17 +369,15 @@ export default function TiendaPage() {
               const isDelivering = delivering === order.id;
 
               return (
-                <div key={order.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <Card key={order.id} padding={false} className="overflow-hidden">
                   {/* Header pedido */}
-                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
+                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
                     <div className="flex items-center gap-2">
                       <span className="text-lg font-bold text-gray-900">#{order.display_id}</span>
-                      {tab === 'entregados' && (
-                        <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-semibold">Entregado</span>
-                      )}
+                      {tab === 'entregados' && <Badge tone="success">Entregado</Badge>}
                     </div>
                     <div className="text-right">
-                      <span className="text-base font-bold text-green-600">{formatPrice(order.total)}</span>
+                      <span className="text-base font-bold text-emerald-600">{formatPrice(order.total)}</span>
                       <p className="text-[10px] text-gray-400">{formatDate(order.created_at)}</p>
                     </div>
                   </div>
@@ -434,7 +385,7 @@ export default function TiendaPage() {
                   <div className="p-4 space-y-3">
                     {/* Cliente */}
                     <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 text-sm font-bold shrink-0">
+                      <div className="w-10 h-10 bg-brand-100 rounded-full flex items-center justify-center text-brand-600 text-sm font-bold shrink-0">
                         {customerName.charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0 flex-1">
@@ -443,7 +394,7 @@ export default function TiendaPage() {
                           <p className="text-xs text-gray-500">DNI: {dni}</p>
                         )}
                         {phone && (
-                          <a href={`tel:${phone}`} className="text-xs text-blue-600 flex items-center gap-1 mt-0.5">
+                          <a href={`tel:${phone}`} className="text-xs text-brand-600 flex items-center gap-1 mt-0.5">
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                             </svg>
@@ -458,7 +409,7 @@ export default function TiendaPage() {
 
                     {/* Productos */}
                     {order.items && order.items.length > 0 && (
-                      <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                      <div className="bg-gray-50 rounded-xl p-3 space-y-2">
                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                           Productos ({totalItems} item{totalItems !== 1 ? 's' : ''})
                         </p>
@@ -471,7 +422,7 @@ export default function TiendaPage() {
                                 <img
                                   src={item.thumbnail}
                                   alt={itemName}
-                                  className="w-10 h-10 rounded-lg object-cover border"
+                                  className="w-10 h-10 rounded-lg object-cover border border-gray-200"
                                 />
                               ) : (
                                 <div className="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-lg">
@@ -487,7 +438,7 @@ export default function TiendaPage() {
                                   <p className="text-[10px] text-gray-400 font-mono">SKU: {item.variant_sku}</p>
                                 )}
                               </div>
-                              <span className="text-xs font-bold text-gray-700 bg-white px-2 py-1 rounded-md border shrink-0">
+                              <span className="text-xs font-bold text-gray-700 bg-white px-2 py-1 rounded-md border border-gray-200 shrink-0">
                                 ×{item.quantity}
                               </span>
                             </div>
@@ -498,26 +449,18 @@ export default function TiendaPage() {
 
                     {/* Botón entregar */}
                     {tab === 'pendientes' && (
-                      <button
-                        onClick={() => handleDeliver(order)}
-                        disabled={isDelivering}
-                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3.5 rounded-xl text-sm font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                      <Button
+                        variant="success"
+                        fullWidth
+                        size="lg"
+                        loading={isDelivering}
+                        onClick={() => setConfirmOrder(order)}
                       >
-                        {isDelivering ? (
-                          <>
-                            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                            </svg>
-                            Entregando...
-                          </>
-                        ) : (
-                          <>✅ Marcar como Entregado</>
-                        )}
-                      </button>
+                        {isDelivering ? 'Entregando...' : '✅ Marcar como Entregado'}
+                      </Button>
                     )}
                   </div>
-                </div>
+                </Card>
               );
             })}
           </div>
@@ -525,14 +468,35 @@ export default function TiendaPage() {
 
         {/* Refresh */}
         {!loading && (
-          <button
-            onClick={fetchOrders}
-            className="w-full py-3 bg-gray-100 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors"
-          >
+          <Button variant="secondary" fullWidth size="lg" onClick={fetchOrders}>
             🔄 Actualizar
-          </button>
+          </Button>
         )}
       </div>
+
+      {/* Confirmación de entrega */}
+      <ConfirmDialog
+        open={confirmOrder !== null}
+        title="Confirmar entrega"
+        message={
+          confirmOrder
+            ? `¿Confirmás la entrega del pedido #${confirmOrder.display_id} a ${
+                confirmOrder.shipping_address?.first_name
+                  ? `${confirmOrder.shipping_address.first_name} ${confirmOrder.shipping_address.last_name || ''}`
+                  : 'el cliente'
+              }?`
+            : ''
+        }
+        confirmLabel="Marcar como entregado"
+        tone="success"
+        loading={confirmOrder !== null && delivering === confirmOrder.id}
+        onConfirm={() => {
+          const order = confirmOrder;
+          setConfirmOrder(null);
+          if (order) handleDeliver(order);
+        }}
+        onCancel={() => setConfirmOrder(null)}
+      />
     </div>
   );
 }
