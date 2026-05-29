@@ -3,6 +3,8 @@ import { getEm } from '@/lib/db';
 import { PickingSession } from '@/lib/entities';
 import { audit } from '@/lib/audit';
 import { medusaRequest } from '@/lib/medusa';
+import { requireRole } from '@/lib/session';
+import { errorResponse } from '@/lib/http';
 
 function generateVoucherCode(orderDisplayId: number): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -16,6 +18,7 @@ function generateVoucherCode(orderDisplayId: number): string {
 // POST /api/gestion/faltantes/voucher - Crear promoción (voucher) en Medusa y resolver faltante
 export async function POST(req: NextRequest) {
   try {
+    await requireRole('admin');
     const em = await getEm();
     const { orderId, value, notes } = await req.json();
 
@@ -109,11 +112,6 @@ export async function POST(req: NextRequest) {
       orderDisplayId: session.orderDisplayId,
     });
   } catch (error) {
-    console.error('[Voucher] Error:', error);
-    const message = error instanceof Error ? error.message : 'Error al crear voucher';
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }

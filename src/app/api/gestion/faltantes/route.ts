@@ -3,10 +3,13 @@ import { getEm } from '@/lib/db';
 import { PickingSession } from '@/lib/entities';
 import { audit } from '@/lib/audit';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
+import { requireRole } from '@/lib/session';
+import { errorResponse } from '@/lib/http';
 
 // POST /api/gestion/faltantes - Resolver faltante
 export async function POST(req: NextRequest) {
   try {
+    await requireRole('admin');
     const em = await getEm();
     const { orderId, resolution, notes } = await req.json();
 
@@ -93,10 +96,6 @@ export async function POST(req: NextRequest) {
       message: `Faltante marcado como: ${resolutionLabels[resolution]}`,
     });
   } catch (error) {
-    console.error('[Faltantes API] Error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Error al resolver faltante' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }

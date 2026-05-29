@@ -1,5 +1,4 @@
-const MEDUSA_BACKEND_URL = process.env.MEDUSA_BACKEND_URL || 'https://backend.marcelakoury.com';
-const MEDUSA_SECRET_API_KEY = process.env.MEDUSA_SECRET_API_KEY || '';
+import { config } from './config';
 
 interface MedusaRequestOptions {
   method?: string;
@@ -14,10 +13,10 @@ export async function medusaRequest<T>(endpoint: string, options: MedusaRequestO
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    'Authorization': `Basic ${MEDUSA_SECRET_API_KEY}`,
+    'Authorization': `Basic ${config.medusaSecretApiKey}`,
   };
 
-  const response = await fetch(`${MEDUSA_BACKEND_URL}${endpoint}`, {
+  const response = await fetch(`${config.medusaBackendUrl}${endpoint}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,

@@ -2,21 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEm } from '@/lib/db';
 import { Store } from '@/lib/entities';
 import { getPaidOrders } from '@/lib/medusa';
+import { errorResponse } from '@/lib/http';
 
 // GET /api/picking/stores - Listar tiendas (Postgres + sync desde pedidos)
 export async function GET() {
   try {
     const em = await getEm();
-
-    // Limpiar tiendas sin nombre que se hayan colado
-    await em.nativeDelete(Store, {
-      $or: [
-        { name: '' },
-        { name: null },
-        { externalId: '' },
-        { externalId: null },
-      ],
-    });
 
     // Sync: extraer tiendas de pedidos y upsert en Postgres
     try {
@@ -73,11 +64,7 @@ export async function GET() {
       })),
     });
   } catch (error) {
-    console.error('[stores] Error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Error al obtener tiendas' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }
 

@@ -10,7 +10,8 @@ export class StoreDelivery {
   orderDisplayId!: number;
   storeId!: string;
   storeName!: string;
-  deliveredBy!: User;
+  /** Nullable: una entrega hecha por el admin no tiene fila User asociada. */
+  deliveredBy?: User;
   deliveredByName!: string;
   deliveredAt: Date = new Date();
   shipmentCreated: boolean = false;
@@ -26,7 +27,7 @@ export const StoreDeliverySchema = new EntitySchema<StoreDelivery>({
     orderDisplayId: { type: 'integer' },
     storeId: { type: 'string', index: true },
     storeName: { type: 'string' },
-    deliveredBy: { kind: 'm:1', entity: () => 'User' },
+    deliveredBy: { kind: 'm:1', entity: () => 'User', nullable: true },
     deliveredByName: { type: 'string' },
     deliveredAt: { type: 'datetime', onCreate: () => new Date() },
     shipmentCreated: { type: 'boolean', default: false },

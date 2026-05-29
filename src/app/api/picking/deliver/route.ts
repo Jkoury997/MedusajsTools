@@ -4,32 +4,40 @@ import { User, StoreDelivery, StoreShipment } from '@/lib/entities';
 import { audit } from '@/lib/audit';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
 import { isFactoryPickup, isStorePickup as checkStorePickup } from '@/lib/shipping';
+import { requireSession } from '@/lib/session';
+import { errorResponse } from '@/lib/http';
 
 // POST /api/picking/deliver - Marcar pedido como entregado en tienda
 export async function POST(req: NextRequest) {
   try {
+    // Requiere sesión válida (estación logueada). El actor concreto puede venir
+    // del body (picker identificado por PIN en una estación compartida) o, si no,
+    // ser el propio titular de la sesión (p. ej. usuario tienda por cookie).
+    const session = await requireSession();
     const em = await getEm();
-    const { orderId, orderDisplayId, userId } = await req.json();
+    const { orderId, orderDisplayId, userId: bodyUserId } = await req.json();
 
-    if (!orderId || !userId) {
+    if (!orderId) {
       return NextResponse.json(
-        { success: false, error: 'orderId y userId son requeridos' },
+        { success: false, error: 'orderId es requerido' },
         { status: 400 }
       );
     }
 
-    // Validar usuario: acepta store, picker (solo fábrica) o admin
+    const actingId: string = bodyUserId || session.userId;
+
+    // Validar actor: acepta store, picker (solo fábrica) o admin
     let userName = 'Admin';
     let userRole = 'admin';
     let userStoreId = '';
     let userStoreName = '';
-    let userIdStr = userId;
+    let actorRef: User | undefined;
 
-    if (userId === 'admin') {
+    if (actingId === 'admin') {
       userName = 'Admin';
       userRole = 'admin';
     } else {
-      const user = await em.findOne(User, { id: userId });
+      const user = await em.findOne(User, { id: actingId });
       if (!user || !user.active || (user.role !== 'store' && user.role !== 'picker')) {
         return NextResponse.json(
           { success: false, error: 'Usuario no autorizado' },
@@ -40,7 +48,7 @@ export async function POST(req: NextRequest) {
       userRole = user.role;
       userStoreId = user.storeId || '';
       userStoreName = user.storeName || '';
-      userIdStr = user.id;
+      actorRef = user;
     }
 
     // Verificar que no se haya entregado ya
@@ -128,13 +136,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Registrar entrega en MongoDB
+    // Registrar entrega
     const delivery = em.create(StoreDelivery, {
       orderId,
       orderDisplayId: orderDisplayId || 0,
       storeId: userStoreId,
       storeName: userStoreName,
-      deliveredBy: em.getReference(User, userIdStr),
+      deliveredBy: actorRef,
       deliveredByName: userName,
       deliveredAt: new Date(),
       shipmentCreated: delivered,
@@ -148,7 +156,7 @@ export async function POST(req: NextRequest) {
     audit({
       action: 'order_deliver',
       userName,
-      userId: userIdStr,
+      userId: actorRef ? actorRef.id : undefined,
       orderId,
       orderDisplayId,
       details: `Pedido #${orderDisplayId} entregado por ${userName}${userStoreName ? ` en tienda ${userStoreName}` : ''}`,
@@ -166,10 +174,6 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('[deliver] Error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Error al marcar como entregado' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }

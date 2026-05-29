@@ -8,7 +8,6 @@ interface StoreUser {
   name: string;
   storeId: string;
   storeName: string;
-  token: string; // Bearer token para endpoints protegidos
 }
 
 interface StoreOrder {
@@ -102,9 +101,9 @@ export default function TiendaPage() {
     if (!user) return;
     setLoading(true);
     try {
-      // Traer pedidos fulfilled y shipped para filtrar por tienda
+      // Traer pedidos fulfilled y shipped para filtrar por tienda (sesión por cookie)
       const res = await fetch('/api/picking/store-orders?' + new URLSearchParams({ storeId: user.storeId }), {
-        headers: { 'Authorization': `Bearer ${user.token}` },
+        credentials: 'include',
       });
       const data = await res.json();
       if (data.success) {
@@ -137,12 +136,13 @@ export default function TiendaPage() {
       });
       const data = await res.json();
       if (data.success) {
-        const userWithToken = { ...data.user, token: data.token };
+        // La sesión vive en una cookie httpOnly; solo guardamos datos no sensibles.
+        const storeUser: StoreUser = data.user;
         if (data.requirePinChange) {
-          setPendingUser(userWithToken);
+          setPendingUser(storeUser);
           setShowPinChange(true);
         } else {
-          setUser(userWithToken);
+          setUser(storeUser);
         }
       } else {
         setAuthError(data.error || 'PIN incorrecto');
@@ -208,14 +208,11 @@ export default function TiendaPage() {
     try {
       const res = await fetch('/api/picking/deliver', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user.token}`,
-        },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orderId: order.id,
           orderDisplayId: order.display_id,
-          userId: user.id,
         }),
       });
       const data = await res.json();
@@ -332,7 +329,10 @@ export default function TiendaPage() {
             <p className="text-xs text-emerald-100">{user.name}</p>
           </div>
           <button
-            onClick={() => { setUser(null); setPin(''); setOrders([]); }}
+            onClick={async () => {
+              try { await fetch('/api/picking/login', { method: 'DELETE', credentials: 'include' }); } catch {}
+              setUser(null); setPin(''); setOrders([]);
+            }}
             className="text-xs bg-emerald-700 hover:bg-emerald-800 px-3 py-1.5 rounded-lg transition-colors"
           >
             Salir

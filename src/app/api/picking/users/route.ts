@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEm } from '@/lib/db';
 import { User } from '@/lib/entities';
 import { audit } from '@/lib/audit';
-import { hashPin } from '@/lib/pin';
+import { hashPin, pinLookupHashes } from '@/lib/pin';
+import { requireRole } from '@/lib/session';
+import { errorResponse } from '@/lib/http';
 
 // GET /api/picking/users - Listar usuarios
 export async function GET(req: NextRequest) {
@@ -27,6 +29,7 @@ export async function GET(req: NextRequest) {
 // POST /api/picking/users - Crear usuario
 export async function POST(req: NextRequest) {
   try {
+    await requireRole('admin');
     const em = await getEm();
     const { name, pin, role, storeId, storeName } = await req.json();
 
@@ -45,7 +48,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Verificar que el PIN no exista
-    const existing = await em.findOne(User, { pin: hashPin(pin) });
+    const existing = await em.findOne(User, { pin: { $in: pinLookupHashes(pin) } });
     if (existing) {
       return NextResponse.json(
         { success: false, error: 'Este PIN ya está en uso' },
@@ -88,10 +91,6 @@ export async function POST(req: NextRequest) {
       },
     }, { status: 201 });
   } catch (error) {
-    console.error('[API users POST]', error);
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Error al crear usuario' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }

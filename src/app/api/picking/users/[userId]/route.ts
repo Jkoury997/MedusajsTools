@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEm } from '@/lib/db';
 import { User, PickingSession } from '@/lib/entities';
 import { audit } from '@/lib/audit';
-import { hashPin } from '@/lib/pin';
+import { hashPin, pinLookupHashes } from '@/lib/pin';
+import { requireRole } from '@/lib/session';
+import { errorResponse } from '@/lib/http';
 
 interface RouteParams {
   params: Promise<{ userId: string }>;
@@ -61,6 +63,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 // PUT /api/picking/users/:userId - Actualizar usuario
 export async function PUT(req: NextRequest, { params }: RouteParams) {
   try {
+    await requireRole('admin');
     const em = await getEm();
     const { userId } = await params;
     const { name, pin, active, role, storeId, storeName } = await req.json();
@@ -84,7 +87,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
           { status: 400 }
         );
       }
-      const existing = await em.findOne(User, { pin: hashPin(pin), id: { $ne: userId } });
+      const existing = await em.findOne(User, { pin: { $in: pinLookupHashes(pin) }, id: { $ne: userId } });
       if (existing) {
         return NextResponse.json(
           { success: false, error: 'Este PIN ya está en uso' },
@@ -128,16 +131,14 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     const { pin: _pin, ...userWithoutPin } = user;
     return NextResponse.json({ success: true, user: userWithoutPin });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: 'Error al actualizar' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }
 
 // DELETE /api/picking/users/:userId - Eliminar usuario
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
   try {
+    await requireRole('admin');
     const em = await getEm();
     const { userId } = await params;
 
@@ -174,9 +175,6 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: 'Error al eliminar usuario' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }

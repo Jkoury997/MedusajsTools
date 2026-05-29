@@ -2,11 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEm } from '@/lib/db';
 import { User, Store } from '@/lib/entities';
 import { audit } from '@/lib/audit';
-import { hashPin } from '@/lib/pin';
-import { createSessionToken } from '@/lib/auth';
+import { hashPin, pinLookupHashes, isLegacyStored } from '@/lib/pin';
+import { createSessionToken, SESSION_DURATION } from '@/lib/auth';
+import { errorResponse } from '@/lib/http';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 const ADMIN_PIN = process.env.ADMIN_PIN;
+
+/** Cookie httpOnly de sesión (mismo patrón que picking/login). */
+function setSessionCookie(res: NextResponse, token: string, req: NextRequest) {
+  const isSecure = req.headers.get('x-forwarded-proto') === 'https' || req.url.startsWith('https');
+  res.cookies.set('picking-session', token, {
+    httpOnly: true,
+    secure: isSecure,
+    sameSite: 'lax',
+    maxAge: SESSION_DURATION / 1000,
+    path: '/',
+  });
+}
 
 // POST /api/picking/store-auth - Login de usuario tienda
 export async function POST(req: NextRequest) {
@@ -35,7 +48,7 @@ export async function POST(req: NextRequest) {
     if (ADMIN_PIN && pin === ADMIN_PIN) {
       const firstStore = await em.findOne(Store, { name: { $ne: '' } });
       const token = createSessionToken('admin', 'store');
-      return NextResponse.json({
+      const res = NextResponse.json({
         success: true,
         user: {
           id: 'admin',
@@ -44,13 +57,14 @@ export async function POST(req: NextRequest) {
           storeId: firstStore?.externalId || 'admin',
           storeName: firstStore?.name || 'Admin',
         },
-        token,
         requirePinChange: false,
       });
+      setSessionCookie(res, token, req);
+      return res;
     }
 
     const user = await em.findOne(User, {
-      pin: hashPin(pin),
+      pin: { $in: pinLookupHashes(pin) },
       role: 'store',
       active: true,
     });
@@ -60,6 +74,12 @@ export async function POST(req: NextRequest) {
         { success: false, error: 'PIN incorrecto o usuario no es tienda' },
         { status: 401 }
       );
+    }
+
+    // Migración lazy del hash legacy.
+    if (isLegacyStored(user.pin, pin)) {
+      user.pin = hashPin(pin);
+      await em.flush();
     }
 
     audit({
@@ -72,7 +92,7 @@ export async function POST(req: NextRequest) {
     const requirePinChange = pin.length < 6;
     const token = createSessionToken(user.id, 'store');
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       success: true,
       user: {
         id: user.id,
@@ -81,14 +101,11 @@ export async function POST(req: NextRequest) {
         storeId: user.storeId,
         storeName: user.storeName,
       },
-      token,
       requirePinChange,
     });
+    setSessionCookie(res, token, req);
+    return res;
   } catch (error) {
-    console.error('[store-auth] Error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Error del servidor' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }

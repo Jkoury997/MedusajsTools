@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEm } from '@/lib/db';
 import { User } from '@/lib/entities';
 import { audit } from '@/lib/audit';
-import { hashPin } from '@/lib/pin';
+import { hashPin, pinLookupHashes, isLegacyStored } from '@/lib/pin';
+import { errorResponse } from '@/lib/http';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 const ADMIN_PIN = process.env.ADMIN_PIN;
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
     }
 
     const user = await em.findOne(User, {
-      pin: hashPin(pin),
+      pin: { $in: pinLookupHashes(pin) },
       role: 'picker',
       active: true,
     });
@@ -53,6 +54,12 @@ export async function POST(req: NextRequest) {
         { success: false, error: 'PIN incorrecto o no sos picker' },
         { status: 401 }
       );
+    }
+
+    // Migración perezosa: re-hashear PIN legacy a HMAC tras un match exitoso
+    if (isLegacyStored(user.pin, pin)) {
+      user.pin = hashPin(pin);
+      await em.flush();
     }
 
     // Indicar si necesita cambiar a 6 dígitos
@@ -67,10 +74,7 @@ export async function POST(req: NextRequest) {
       requirePinChange,
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: 'Error del servidor' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }
 
@@ -97,7 +101,7 @@ export async function PUT(req: NextRequest) {
     // Verificar que el usuario existe y el PIN actual es correcto
     const user = await em.findOne(User, {
       id: userId,
-      pin: hashPin(currentPin),
+      pin: { $in: pinLookupHashes(currentPin) },
       active: true,
     });
 
@@ -108,9 +112,15 @@ export async function PUT(req: NextRequest) {
       );
     }
 
+    // Migración perezosa del PIN actual (verificación de PIN existente)
+    if (isLegacyStored(user.pin, currentPin)) {
+      user.pin = hashPin(currentPin);
+      await em.flush();
+    }
+
     // Verificar que el nuevo PIN no esté en uso
     const existing = await em.findOne(User, {
-      pin: hashPin(newPin),
+      pin: { $in: pinLookupHashes(newPin) },
       id: { $ne: userId },
     });
     if (existing) {
@@ -136,9 +146,6 @@ export async function PUT(req: NextRequest) {
       message: 'PIN actualizado correctamente',
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: 'Error del servidor' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }

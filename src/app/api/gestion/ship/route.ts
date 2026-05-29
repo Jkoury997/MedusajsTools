@@ -4,10 +4,13 @@ import { getEm } from '@/lib/db';
 import { StoreShipment } from '@/lib/entities';
 import { audit } from '@/lib/audit';
 import { isStorePickup } from '@/lib/shipping';
+import { requireRole } from '@/lib/session';
+import { errorResponse } from '@/lib/http';
 
 // POST /api/gestion/ship - Marcar pedido como enviado (crear shipment)
 export async function POST(req: NextRequest) {
   try {
+    await requireRole('admin');
     const em = await getEm();
     const { orderId, orderDisplayId } = await req.json();
 
@@ -119,10 +122,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('[Ship API] Error:', error);
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Error al enviar pedido' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }

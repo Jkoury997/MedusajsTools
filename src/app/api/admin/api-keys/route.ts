@@ -3,10 +3,13 @@ import { getEm } from '@/lib/db';
 import { ApiKey } from '@/lib/entities';
 import { audit } from '@/lib/audit';
 import { generateApiKey } from '@/lib/auth';
+import { requireRole } from '@/lib/session';
+import { errorResponse } from '@/lib/http';
 
 // GET /api/admin/api-keys - Listar API keys (parcialmente enmascaradas)
 export async function GET() {
   try {
+    await requireRole('admin');
     const em = await getEm();
     const keys = await em.find(ApiKey, {}, { orderBy: { createdAt: 'DESC' } });
 
@@ -23,17 +26,14 @@ export async function GET() {
 
     return NextResponse.json({ success: true, apiKeys: masked });
   } catch (error) {
-    console.error('[api-keys] GET error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Error al listar API keys' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }
 
 // POST /api/admin/api-keys - Crear nueva API key
 export async function POST(req: NextRequest) {
   try {
+    await requireRole('admin');
     const em = await getEm();
     const { name } = await req.json();
 
@@ -74,17 +74,14 @@ export async function POST(req: NextRequest) {
       message: 'Guarda esta API key, no se mostrara completa de nuevo.',
     });
   } catch (error) {
-    console.error('[api-keys] POST error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Error al crear API key' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }
 
 // DELETE /api/admin/api-keys - Revocar API key
 export async function DELETE(req: NextRequest) {
   try {
+    await requireRole('admin');
     const em = await getEm();
     const { id } = await req.json();
 
@@ -118,10 +115,6 @@ export async function DELETE(req: NextRequest) {
       message: `API key "${apiKey.name}" revocada`,
     });
   } catch (error) {
-    console.error('[api-keys] DELETE error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Error al revocar API key' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }

@@ -3,6 +3,8 @@ import { getEm } from '@/lib/db';
 import { PickingSession } from '@/lib/entities';
 import { audit } from '@/lib/audit';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
+import { requireRole } from '@/lib/session';
+import { errorResponse } from '@/lib/http';
 
 // GET /api/gestion/faltantes/receive?orderId=xxx - Obtener items faltantes para escaneo
 export async function GET(req: NextRequest) {
@@ -45,6 +47,7 @@ export async function GET(req: NextRequest) {
 // POST /api/gestion/faltantes/receive - Registrar item recibido por escaneo
 export async function POST(req: NextRequest) {
   try {
+    await requireRole('admin');
     const em = await getEm();
     const { orderId, barcode, sku, lineItemId } = await req.json();
 
@@ -176,7 +179,6 @@ export async function POST(req: NextRequest) {
       missingItems,
     });
   } catch (error) {
-    console.error('[Receive] POST Error:', error);
-    return NextResponse.json({ success: false, error: 'Error al registrar recepción' }, { status: 500 });
+    return errorResponse(error);
   }
 }
