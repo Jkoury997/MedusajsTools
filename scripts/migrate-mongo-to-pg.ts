@@ -11,6 +11,10 @@
  *
  * IMPORTANTE: correr `npx tsx scripts/setup-db.ts` primero para crear el schema.
  */
+import { existsSync } from 'node:fs';
+// Cargar .env.local (tsx no lo hace solo, a diferencia de Next.js).
+if (existsSync('.env.local')) process.loadEnvFile('.env.local');
+
 import mongoose from 'mongoose';
 import { randomUUID } from 'crypto';
 import { MikroORM, type EntityManager } from '@mikro-orm/postgresql';

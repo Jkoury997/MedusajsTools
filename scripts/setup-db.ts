@@ -2,6 +2,10 @@
  * Crea/actualiza el schema de Postgres a partir de las entidades.
  * Uso: DATABASE_URL=postgres://... npx tsx scripts/setup-db.ts
  */
+import { existsSync } from 'node:fs';
+// Cargar .env.local (tsx no lo hace solo, a diferencia de Next.js).
+if (existsSync('.env.local')) process.loadEnvFile('.env.local');
+
 import { MikroORM } from '@mikro-orm/postgresql';
 import { buildOrmOptions } from '../src/lib/db';
 
