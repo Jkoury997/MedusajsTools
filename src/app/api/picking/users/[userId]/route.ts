@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getEm } from '@/lib/db';
-import { User, PickingSession } from '@/lib/entities';
+import { User, PickingSession, StoreDelivery, AuditLog } from '@/lib/entities';
 import { audit } from '@/lib/audit';
 import { hashPin, pinLookupHashes, encryptPin } from '@/lib/pin';
 import { requireRole } from '@/lib/session';
@@ -174,6 +174,30 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // En Postgres hay FKs: si el usuario tiene historial de picking NO se puede
+    // borrar (perderíamos sesiones/items). En ese caso se DESACTIVA (soft-delete),
+    // conservando el historial. Solo se borra de verdad si no tiene sesiones.
+    const sessionCount = await em.count(PickingSession, { user: userId });
+
+    if (sessionCount > 0) {
+      user.active = false;
+      await em.flush();
+      audit({
+        action: 'user_update',
+        userName: 'Admin',
+        details: `Usuario desactivado (tiene ${sessionCount} sesiones de picking, no se puede eliminar): ${user.name}`,
+        metadata: { targetUserId: userId, targetUserName: user.name, deactivated: true },
+      });
+      return NextResponse.json({
+        success: true,
+        deactivated: true,
+        message: 'El usuario tiene historial de picking, así que se desactivó en vez de eliminarse.',
+      });
+    }
+
+    // Sin historial de picking: nulificar referencias opcionales y borrar.
+    await em.nativeUpdate(StoreDelivery, { deliveredBy: userId }, { deliveredBy: null });
+    await em.nativeUpdate(AuditLog, { user: userId }, { user: null });
     await em.nativeDelete(User, { id: userId });
 
     audit({
