@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEm } from '@/lib/db';
 import { User, PickingSession } from '@/lib/entities';
 import { audit } from '@/lib/audit';
-import { hashPin, pinLookupHashes } from '@/lib/pin';
+import { hashPin, pinLookupHashes, encryptPin } from '@/lib/pin';
 import { requireRole } from '@/lib/session';
 import { errorResponse } from '@/lib/http';
 
@@ -15,6 +15,15 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   try {
     const em = await getEm();
     const { userId } = await params;
+
+    // id inválido (p. ej. "undefined") -> 404, no 500 por error de cast de uuid
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!userId || !UUID_RE.test(userId)) {
+      return NextResponse.json(
+        { success: false, error: 'Usuario no encontrado' },
+        { status: 404 }
+      );
+    }
 
     const user = await em.findOne(User, { id: userId });
     if (!user) {
@@ -95,6 +104,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
         );
       }
       updateData.pin = hashPin(pin);
+      updateData.pinEnc = encryptPin(pin);
     }
 
     if (active !== undefined) {
@@ -128,7 +138,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       metadata: { targetUserId: userId, targetUserName: user.name, changes: Object.keys(updateData) },
     });
 
-    const { pin: _pin, ...userWithoutPin } = user;
+    const { pin: _pin, pinEnc: _pinEnc, ...userWithoutPin } = user;
     return NextResponse.json({ success: true, user: userWithoutPin });
   } catch (error) {
     return errorResponse(error);

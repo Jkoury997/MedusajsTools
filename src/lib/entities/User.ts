@@ -8,8 +8,10 @@ export class User {
   [OptionalProps]?: 'active' | 'role' | 'createdAt' | 'updatedAt';
   id: string = randomUUID();
   name!: string;
-  /** PIN hasheado (bcrypt; los heredados de Mongo son sha256, se migran en el login). */
+  /** PIN hasheado (HMAC; los heredados de Mongo son sha256, se migran en el login). */
   pin!: string;
+  /** PIN cifrado (AES-GCM) para que el admin pueda verlo. Se completa al crear/editar o en el login. */
+  pinEnc?: string;
   active: boolean = true;
   role: UserRole = 'picker';
   /** Solo para role=store: ID externo de la tienda (Medusa). */
@@ -33,6 +35,7 @@ export const UserSchema = new EntitySchema<User>({
     id: { type: 'uuid', primary: true },
     name: { type: 'string' },
     pin: { type: 'string' },
+    pinEnc: { type: 'string', nullable: true },
     active: { type: 'boolean', default: true },
     role: { enum: true, items: ['picker', 'store', 'admin'], default: 'picker' },
     storeId: { type: 'string', nullable: true },

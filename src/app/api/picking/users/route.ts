@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEm } from '@/lib/db';
 import { User } from '@/lib/entities';
 import { audit } from '@/lib/audit';
-import { hashPin, pinLookupHashes } from '@/lib/pin';
-import { requireRole } from '@/lib/session';
+import { hashPin, pinLookupHashes, encryptPin, decryptPin } from '@/lib/pin';
+import { requireRole, getSession } from '@/lib/session';
 import { errorResponse } from '@/lib/http';
 
 // GET /api/picking/users - Listar usuarios
@@ -12,17 +12,21 @@ export async function GET(req: NextRequest) {
     const em = await getEm();
     const includeInactive = req.nextUrl.searchParams.get('all') === 'true';
 
+    // El PIN descifrado SOLO se devuelve a un admin logueado (nunca a la stats key).
+    const session = await getSession();
+    const isAdmin = session?.role === 'admin';
+
     const filter = includeInactive ? {} : { active: true };
     const found = await em.find(User, filter, { orderBy: { name: 'ASC' } });
-    const users = found.map(({ pin: _pin, ...rest }) => rest);
+    const users = found.map(({ pin: _pin, pinEnc, ...rest }) => ({
+      ...rest,
+      // null = usuario migrado sin PIN visible aún (se revela cuando hace login o lo reseteás)
+      pin: isAdmin ? decryptPin(pinEnc) : undefined,
+    }));
 
     return NextResponse.json({ success: true, users });
   } catch (error) {
-    console.error('[API users GET]', error);
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Error del servidor' },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }
 
@@ -68,6 +72,7 @@ export async function POST(req: NextRequest) {
     const user = em.create(User, {
       name: name.trim(),
       pin: hashPin(pin),
+      pinEnc: encryptPin(pin),
       active: true,
       role: userRole,
       ...(userRole === 'store' ? { storeId: storeId.trim(), storeName: storeName.trim() } : {}),

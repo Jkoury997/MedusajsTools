@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEm } from '@/lib/db';
 import { User } from '@/lib/entities';
 import { audit } from '@/lib/audit';
-import { hashPin, pinLookupHashes, isLegacyStored } from '@/lib/pin';
+import { hashPin, pinLookupHashes, isLegacyStored, encryptPin } from '@/lib/pin';
 import { errorResponse } from '@/lib/http';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
@@ -56,11 +56,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Migración perezosa: re-hashear PIN legacy a HMAC tras un match exitoso
+    // Migración perezosa: re-hashear PIN legacy a HMAC + cifrar para verlo en admin
+    let needFlush = false;
     if (isLegacyStored(user.pin, pin)) {
       user.pin = hashPin(pin);
-      await em.flush();
+      needFlush = true;
     }
+    if (!user.pinEnc) {
+      user.pinEnc = encryptPin(pin);
+      needFlush = true;
+    }
+    if (needFlush) await em.flush();
 
     // Indicar si necesita cambiar a 6 dígitos
     const requirePinChange = pin.length < 6;
@@ -130,8 +136,9 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    // Actualizar PIN
+    // Actualizar PIN (hash de login + cifrado para verlo en admin)
     user.pin = hashPin(newPin);
+    user.pinEnc = encryptPin(newPin);
     await em.flush();
 
     audit({

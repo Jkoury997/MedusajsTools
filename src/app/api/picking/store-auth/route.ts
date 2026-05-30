@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEm } from '@/lib/db';
 import { User, Store } from '@/lib/entities';
 import { audit } from '@/lib/audit';
-import { hashPin, pinLookupHashes, isLegacyStored } from '@/lib/pin';
+import { hashPin, pinLookupHashes, isLegacyStored, encryptPin } from '@/lib/pin';
 import { createSessionToken, SESSION_DURATION } from '@/lib/auth';
 import { errorResponse } from '@/lib/http';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
@@ -76,11 +76,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Migración lazy del hash legacy.
+    // Migración lazy del hash legacy + guardar PIN cifrado para que el admin lo vea.
+    let needFlush = false;
     if (isLegacyStored(user.pin, pin)) {
       user.pin = hashPin(pin);
-      await em.flush();
+      needFlush = true;
     }
+    if (!user.pinEnc) {
+      user.pinEnc = encryptPin(pin);
+      needFlush = true;
+    }
+    if (needFlush) await em.flush();
 
     audit({
       action: 'store_login',
