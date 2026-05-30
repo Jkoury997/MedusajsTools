@@ -108,6 +108,7 @@ export default function AdminUsuariosPage() {
   }
 
   const fetchUserStats = useCallback(async (userId: string) => {
+    if (!userId) return; // guard: no pedir /users/undefined
     try {
       const res = await fetch(`/api/picking/users/${userId}`);
       const data = await res.json();

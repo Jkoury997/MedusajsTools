@@ -16,6 +16,15 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     const em = await getEm();
     const { userId } = await params;
 
+    // id inválido (p. ej. "undefined") -> 404, no 500 por error de cast de uuid
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!userId || !UUID_RE.test(userId)) {
+      return NextResponse.json(
+        { success: false, error: 'Usuario no encontrado' },
+        { status: 404 }
+      );
+    }
+
     const user = await em.findOne(User, { id: userId });
     if (!user) {
       return NextResponse.json(
