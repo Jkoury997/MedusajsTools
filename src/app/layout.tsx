@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import PwaProvider from "@/components/PwaProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,10 +16,15 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Pickeo - Marcela Koury",
   description: "Sistema de pickeo para gestión de pedidos",
+  manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "Pickeo MK",
+  },
+  icons: {
+    icon: "/icons/icon-192.png",
+    apple: "/icons/apple-touch-icon.png",
   },
 };
 
@@ -41,6 +47,7 @@ export default function RootLayout({
         <main className="max-w-lg mx-auto px-4 py-2 sm:max-w-2xl lg:max-w-4xl">
           {children}
         </main>
+        <PwaProvider />
       </body>
     </html>
   );

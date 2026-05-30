@@ -24,12 +24,16 @@ const STORE_TOKEN_PATHS = [
 const PUBLIC_PATHS = [
   '/login',
   '/tienda',
+  '/offline',
   '/api/picking/login',
   '/api/picking/auth',
   '/api/picking/store-auth',
   '/icon.svg',
   '/apple-icon.svg',
   '/favicon.ico',
+  '/manifest.webmanifest',
+  '/sw.js',
+  '/icons/',
 ];
 
 // HMAC con Web Crypto API (funciona en Edge).

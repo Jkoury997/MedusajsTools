@@ -7,6 +7,16 @@ export default function LogoutButton() {
 
   async function handleLogout() {
     await fetch('/api/picking/login', { method: 'DELETE' });
+    // Limpiar las cachés del SW para no dejar datos (PII) de la sesión anterior.
+    try {
+      navigator.serviceWorker?.controller?.postMessage('CLEAR_CACHES');
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+    } catch {
+      // best-effort
+    }
     router.push('/login');
     router.refresh();
   }
