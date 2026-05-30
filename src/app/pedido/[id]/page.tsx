@@ -7,7 +7,6 @@ import StoreLabel from './StoreLabel';
 import DeliverButton from './DeliverButton';
 import { isFactoryPickup as checkFactoryPickup, isStorePickup as checkStorePickup } from '@/lib/shipping';
 import { getEm } from '@/lib/db';
-import { config } from '@/lib/config';
 import { PickingSession, StoreShipment } from '@/lib/entities';
 
 export const dynamic = 'force-dynamic';
@@ -475,10 +474,10 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
                 )}
               </p>
             </div>
-            {/* Botón para descargar etiqueta de ML */}
+            {/* Botón para descargar etiqueta de Mercado Envíos (proxy con sesión) */}
             {order.metadata?.ml_shipment_id && (
               <a
-                href={`${config.medusaBackendUrl}/admin/mercadolibre/label?shipment_id=${order.metadata.ml_shipment_id}`}
+                href={`/api/picking/ml-label?shipmentId=${order.metadata.ml_shipment_id}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="bg-gray-900 text-yellow-400 px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-800 transition-colors flex items-center gap-2"
