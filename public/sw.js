@@ -12,7 +12,7 @@
  * Para forzar una actualización: subir CACHE_VERSION.
  */
 
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const STATIC_CACHE = `mk-static-${CACHE_VERSION}`;
 const PAGES_CACHE = `mk-pages-${CACHE_VERSION}`;
 const API_CACHE = `mk-api-${CACHE_VERSION}`;
@@ -107,6 +107,9 @@ self.addEventListener("fetch", (event) => {
 
   // Solo manejamos mismo origen y GET. El resto (mutaciones, cross-origin) va directo a la red.
   if (url.origin !== self.location.origin || request.method !== "GET") return;
+
+  // El heartbeat NUNCA se cachea: debe reflejar si el server responde de verdad.
+  if (url.pathname === "/api/health") return;
 
   if (isStaticAsset(url)) {
     event.respondWith(cacheFirst(request));

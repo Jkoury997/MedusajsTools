@@ -28,6 +28,7 @@ const PUBLIC_PATHS = [
   '/api/picking/login',
   '/api/picking/auth',
   '/api/picking/store-auth',
+  '/api/health',
   '/icon.svg',
   '/apple-icon.svg',
   '/favicon.ico',
