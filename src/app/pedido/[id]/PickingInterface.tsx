@@ -4,6 +4,16 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAudioFeedback } from '@/hooks/useAudioFeedback';
 import { AuthCard, PinInput, Button, Card, Badge, Alert, Modal } from '@/components/ui';
+import {
+  applyPickDelta,
+  applyMissing,
+  findByBarcode,
+  toSyncItems,
+  loadLocal,
+  saveLocal,
+  clearLocal,
+  type LocalSession,
+} from '@/lib/offline-picking';
 
 interface PickingItem {
   lineItemId: string;
@@ -130,11 +140,46 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
 
   const router = useRouter();
 
+  // ── Offline (Nivel 3): pickeo sin señal + sincronización al reconectar ──
+  const [offlinePending, setOfflinePending] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  // Espejo de `session` siempre actualizado, para escaneos rápidos offline.
+  const sessionRef = useRef<SessionData | null>(null);
+
   // Feedback sonido + vibración (hook compartido)
   const { success, error: errorFeedbackFn } = useAudioFeedback();
   const successFeedback = success;
   const errorFeedback = errorFeedbackFn;
   const completeFeedback = success;
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  /**
+   * Aplica una mutación localmente (offline): actualiza la sesión optimista,
+   * la persiste en IndexedDB marcándola "sucia" y avisa al UI. Lo llaman los
+   * handlers cuando el fetch falla por falta de señal.
+   */
+  const applyOffline = useCallback(
+    (reducer: (s: LocalSession) => LocalSession) => {
+      const prev = sessionRef.current;
+      if (!prev) return;
+      const next = { ...prev, ...reducer(prev) } as SessionData;
+      sessionRef.current = next;
+      setSession(next);
+      setOfflinePending(true);
+      void saveLocal({
+        orderId,
+        session: next,
+        dirty: true,
+        // Completar requiere conexión (crea el fulfillment en Medusa), no se encola.
+        pendingComplete: false,
+        updatedAt: Date.now(),
+      });
+    },
+    [orderId],
+  );
 
   // Timer
   useEffect(() => {
@@ -156,6 +201,54 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
   useEffect(() => {
     checkExistingSession();
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId]);
+
+  // Sincronización offline: reconcilia los picks locales con el server al
+  // (re)conectar. Si sigue sin señal, restaura el estado local en la UI.
+  useEffect(() => {
+    let cancelled = false;
+
+    const trySync = async () => {
+      const rec = await loadLocal<SessionData>(orderId);
+      if (cancelled || !rec || !rec.dirty) return;
+
+      // Sin señal: mostrar el progreso guardado localmente.
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setSession((prev) => (prev ? { ...prev, ...rec.session } : prev));
+        setOfflinePending(true);
+        return;
+      }
+
+      setSyncing(true);
+      try {
+        const res = await fetch(`/api/picking/session/${orderId}/sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: toSyncItems(rec.session) }),
+        });
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.success) {
+          setSession((prev) => (prev ? { ...prev, ...data.session } : prev));
+          setOfflinePending(false);
+          await clearLocal(orderId);
+        }
+      } catch {
+        // sigue sin señal: se reintenta en el próximo evento/intervalo
+      } finally {
+        if (!cancelled) setSyncing(false);
+      }
+    };
+
+    window.addEventListener('online', trySync);
+    const id = setInterval(trySync, 20_000);
+    void trySync();
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('online', trySync);
+      clearInterval(id);
+    };
   }, [orderId]);
 
   async function checkExistingSession() {
@@ -313,12 +406,13 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
         setTimeout(() => setPickError(''), 3000);
       }
     } catch {
-      setPickError('Error de conexión');
-      errorFeedback();
+      // Sin señal: pickear localmente (se sincroniza al reconectar).
+      applyOffline((s) => applyPickDelta(s, lineItemId, +1));
+      successFeedback();
     } finally {
       setActionLoading(null);
     }
-  }, [actionLoading, orderId, successFeedback, errorFeedback]);
+  }, [actionLoading, orderId, successFeedback, errorFeedback, applyOffline]);
 
   // Unpick -1
   const handleUnpick = useCallback(async (lineItemId: string) => {
@@ -341,11 +435,12 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
         setTimeout(() => setPickError(''), 3000);
       }
     } catch {
-      setPickError('Error de conexión');
+      // Sin señal: revertir localmente.
+      applyOffline((s) => applyPickDelta(s, lineItemId, -1));
     } finally {
       setActionLoading(null);
     }
-  }, [actionLoading, orderId]);
+  }, [actionLoading, orderId, applyOffline]);
 
   // Mark item as missing (faltante)
   const handleMissing = useCallback(async (lineItemId: string, quantity: number) => {
@@ -370,12 +465,13 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
         setTimeout(() => setPickError(''), 3000);
       }
     } catch {
-      setPickError('Error de conexión');
-      errorFeedback();
+      // Sin señal: marcar faltante localmente.
+      applyOffline((s) => applyMissing(s, lineItemId, quantity));
+      successFeedback();
     } finally {
       setActionLoading(null);
     }
-  }, [actionLoading, orderId, successFeedback, errorFeedback]);
+  }, [actionLoading, orderId, successFeedback, errorFeedback, applyOffline]);
 
   // Barcode scan
   async function handleBarcodeScan(e: React.FormEvent) {
@@ -420,8 +516,38 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
         }, 2000);
       }
     } catch {
-      setPickError('Error de conexión');
-      errorFeedback();
+      // Sin señal: pickear por código de barras contra el estado local.
+      const localSession = sessionRef.current;
+      const item = localSession ? findByBarcode(localSession, barcode) : undefined;
+
+      if (item && item.quantityPicked < item.quantityRequired) {
+        applyOffline((s) => applyPickDelta(s, item.lineItemId, +1));
+        if (barcodeRef.current) barcodeRef.current.value = '';
+        successFeedback();
+        setLastScannedItemId(item.lineItemId);
+        const scannedOrderItem = orderItems.find((oi) => oi.id === item.lineItemId);
+        if (scannedOrderItem) {
+          const name = getItemName(scannedOrderItem);
+          const size = scannedOrderItem.variant?.metadata?.size;
+          const color = scannedOrderItem.variant?.metadata?.color;
+          const detail = [size, color].filter(Boolean).join(' - ');
+          setLastScannedName(
+            `${name}${detail ? ` (${detail})` : ''} — ${item.quantityPicked + 1}/${item.quantityRequired}`,
+          );
+        }
+        setTimeout(() => {
+          setLastScannedItemId(null);
+          setLastScannedName(null);
+        }, 2500);
+      } else {
+        if (barcodeRef.current) barcodeRef.current.value = '';
+        setShowWrongArticlePopup(true);
+        errorFeedback();
+        setTimeout(() => {
+          setShowWrongArticlePopup(false);
+          barcodeRef.current?.focus();
+        }, 2000);
+      }
     } finally {
       setActionLoading(null);
       barcodeRef.current?.focus();
@@ -458,7 +584,10 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
         errorFeedback();
       }
     } catch {
-      setPickError('Error al completar');
+      // Completar crea el fulfillment en Medusa: requiere conexión. Los picks
+      // quedan guardados offline y se sincronizan solos al volver la señal.
+      setPickError('Necesitás conexión para completar. Tus picks están guardados y se sincronizan al volver la señal.');
+      errorFeedback();
     } finally {
       setCompleting(false);
     }
@@ -805,6 +934,22 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
             <span className="text-2xl font-mono font-bold">{formatElapsed(elapsed)}</span>
           </div>
         </div>
+
+        {/* Indicador offline / sincronización */}
+        {(offlinePending || syncing) && (
+          <div
+            className={`mb-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${
+              syncing ? 'bg-white/25 text-white' : 'bg-yellow-400 text-gray-900'
+            }`}
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${syncing ? 'bg-white animate-pulse' : 'bg-gray-900'}`}
+            />
+            {syncing
+              ? 'Sincronizando…'
+              : 'Cambios sin conexión — se sincronizan al volver la señal'}
+          </div>
+        )}
 
         {/* Progress bar */}
         <div className="bg-white/20 rounded-full h-3 overflow-hidden">

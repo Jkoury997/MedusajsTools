@@ -6,6 +6,7 @@ export type AuditAction =
   | 'session_start'
   | 'session_complete'
   | 'session_cancel'
+  | 'session_sync_offline'
   | 'item_pick'
   | 'item_unpick'
   | 'item_missing'

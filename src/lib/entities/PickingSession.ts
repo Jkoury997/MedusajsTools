@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { User } from './User';
 
 export type PickingStatus = 'in_progress' | 'completed' | 'cancelled';
-export type ScanMethod = 'barcode' | 'manual' | 'sku';
+export type ScanMethod = 'barcode' | 'manual' | 'sku' | 'offline-sync';
 export type FaltanteResolution = 'pending' | 'voucher' | 'waiting' | 'resolved';
 /** Estado del fulfillment en Medusa (para soportar reintentos sin duplicar). */
 export type FulfillmentStatus = 'none' | 'pending' | 'created' | 'failed';
@@ -94,7 +94,7 @@ export const PickingItemSchema = new EntitySchema<PickingItem>({
     quantityMissing: { type: 'integer', default: 0 },
     quantityReceived: { type: 'integer', default: 0 },
     pickedAt: { type: 'datetime', nullable: true },
-    scanMethod: { enum: true, items: ['barcode', 'manual', 'sku'], nullable: true },
+    scanMethod: { enum: true, items: ['barcode', 'manual', 'sku', 'offline-sync'], nullable: true },
   },
 });
 
