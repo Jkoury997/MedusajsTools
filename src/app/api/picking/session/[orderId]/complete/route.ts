@@ -100,12 +100,32 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
           .filter((item: any) => item.quantity > 0);
 
         // MedusaJS v2 endpoint: POST /admin/orders/:id/fulfillments (plural)
-        await medusaRequest(`/admin/orders/${orderId}/fulfillments`, {
-          method: 'POST',
-          body: {
-            items: fulfillmentItems,
-          },
-        });
+        const createFulfillment = () =>
+          medusaRequest(`/admin/orders/${orderId}/fulfillments`, {
+            method: 'POST',
+            body: {
+              items: fulfillmentItems,
+            },
+          });
+
+        try {
+          await createFulfillment();
+        } catch (err) {
+          // Las órdenes que no pasaron por el carrito (Mercado Libre, ERP) se
+          // crean sin reserva de inventario, y el fulfillment falla con
+          // "No stock reservation found". Creamos las reservas en Medusa y
+          // reintentamos una vez.
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes('No stock reservation found')) {
+            console.log('[complete] Sin reserva de stock; creando reservas y reintentando fulfillment');
+            await medusaRequest(`/admin/orders/${orderId}/reserve-inventory`, {
+              method: 'POST',
+            });
+            await createFulfillment();
+          } else {
+            throw err;
+          }
+        }
 
         fulfillmentCreated = true;
 
