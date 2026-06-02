@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "db:preview": "tsx scripts/preview-db.ts",
     "db:setup": "tsx scripts/setup-db.ts",
     "db:migrate-from-mongo": "tsx scripts/migrate-mongo-to-pg.ts"
   },
