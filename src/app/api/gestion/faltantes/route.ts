@@ -10,7 +10,7 @@ import { LockMode } from '@mikro-orm/core';
 // POST /api/gestion/faltantes - Resolver faltante
 export async function POST(req: NextRequest) {
   try {
-    await requireRole('admin');
+    await requireRole('admin', 'ecommerce');
     const em = await getEm();
     const { orderId, resolution, notes } = await req.json();
 

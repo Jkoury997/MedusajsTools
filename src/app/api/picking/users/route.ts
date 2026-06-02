@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Validar datos de tienda si el rol es store
-    const userRole = role === 'store' ? 'store' : 'picker';
+    const userRole = ['store', 'ecommerce', 'picker'].includes(role) ? role : 'picker';
     if (userRole === 'store' && (!storeId?.trim() || !storeName?.trim())) {
       return NextResponse.json(
         { success: false, error: 'Para usuarios tienda se requiere ID y nombre de tienda' },

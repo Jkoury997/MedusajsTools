@@ -112,7 +112,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     }
 
     if (role !== undefined) {
-      updateData.role = role === 'store' ? 'store' : 'picker';
+      updateData.role = ['store', 'ecommerce', 'picker'].includes(role) ? role : 'picker';
     }
     if (storeId !== undefined) updateData.storeId = storeId?.trim() || '';
     if (storeName !== undefined) updateData.storeName = storeName?.trim() || '';

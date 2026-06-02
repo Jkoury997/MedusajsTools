@@ -20,7 +20,7 @@ function generateVoucherCode(orderDisplayId: number): string {
 // POST /api/gestion/faltantes/voucher - Crear promoción (voucher) en Medusa y resolver faltante
 export async function POST(req: NextRequest) {
   try {
-    await requireRole('admin');
+    await requireRole('admin', 'ecommerce');
     const em = await getEm();
     const { orderId, value, notes } = await req.json();
 

@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
 // POST /api/gestion/faltantes/receive - Registrar item recibido por escaneo
 export async function POST(req: NextRequest) {
   try {
-    await requireRole('admin');
+    await requireRole('admin', 'ecommerce');
     const em = await getEm();
     const { orderId, barcode, sku, lineItemId } = await req.json();
 
