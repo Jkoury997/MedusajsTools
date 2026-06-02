@@ -1,7 +1,7 @@
 import { EntitySchema, OptionalProps } from '@mikro-orm/core';
 import { randomUUID } from 'crypto';
 
-export type UserRole = 'picker' | 'store' | 'admin';
+export type UserRole = 'picker' | 'store' | 'admin' | 'ecommerce';
 
 /** Usuario del sistema de pickeo (antes PickingUser en Mongo). */
 export class User {
@@ -37,7 +37,7 @@ export const UserSchema = new EntitySchema<User>({
     pin: { type: 'string' },
     pinEnc: { type: 'string', nullable: true },
     active: { type: 'boolean', default: true },
-    role: { enum: true, items: ['picker', 'store', 'admin'], default: 'picker' },
+    role: { enum: true, items: ['picker', 'store', 'admin', 'ecommerce'], default: 'picker' },
     storeId: { type: 'string', nullable: true },
     storeName: { type: 'string', nullable: true },
     createdAt: { type: 'datetime', onCreate: () => new Date() },

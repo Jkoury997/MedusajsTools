@@ -7,7 +7,7 @@ import { errorResponse } from '@/lib/http';
 // POST /api/gestion/deliver - Marcar pedido como entregado
 export async function POST(req: NextRequest) {
   try {
-    await requireRole('admin');
+    await requireRole('admin', 'ecommerce');
     const { orderId, orderDisplayId } = await req.json();
 
     if (!orderId) {

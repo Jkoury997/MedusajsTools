@@ -53,8 +53,13 @@ export async function POST(req: NextRequest) {
       return response;
     }
 
-    // Verificar si es picker (lookup determinístico: HMAC nuevo o sha256 legacy)
-    const user = await em.findOne(User, { pin: { $in: pinLookupHashes(pin) }, role: 'picker', active: true });
+    // Verificar si es picker o encargado de eCommerce (lookup determinístico:
+    // HMAC nuevo o sha256 legacy). El rol 'store' entra por /store-auth, no acá.
+    const user = await em.findOne(User, {
+      pin: { $in: pinLookupHashes(pin) },
+      role: { $in: ['picker', 'ecommerce'] },
+      active: true,
+    });
     if (user) {
       // Migración lazy: re-hashear legacy a HMAC y guardar el PIN cifrado
       // (para que el admin pueda verlo) si todavía no lo tiene.
@@ -68,10 +73,10 @@ export async function POST(req: NextRequest) {
         needFlush = true;
       }
       if (needFlush) await em.flush();
-      const token = createSessionToken(user.id, 'picker');
+      const token = createSessionToken(user.id, user.role);
       const response = NextResponse.json({
         success: true,
-        user: { id: user.id, name: user.name, role: 'picker' },
+        user: { id: user.id, name: user.name, role: user.role },
         requirePinChange: pin.length < 6,
       });
       response.cookies.set('picking-session', token, {
@@ -81,7 +86,7 @@ export async function POST(req: NextRequest) {
         maxAge: SESSION_DURATION / 1000,
         path: '/',
       });
-      audit({ action: 'login', userName: user.name, userId: user.id, details: 'Login como picker' });
+      audit({ action: 'login', userName: user.name, userId: user.id, details: `Login como ${user.role}` });
       return response;
     }
 

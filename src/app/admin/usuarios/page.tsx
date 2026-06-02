@@ -8,7 +8,7 @@ interface PickingUser {
   id: string;
   name: string;
   active: boolean;
-  role?: 'picker' | 'store';
+  role?: 'picker' | 'store' | 'ecommerce';
   storeId?: string;
   storeName?: string;
   /** PIN en claro (solo lo devuelve la API a un admin). null = aún no visible. */
@@ -42,7 +42,7 @@ export default function AdminUsuariosPage() {
   const [name, setName] = useState('');
   const [pin, setPin] = useState('');
   const [active, setActive] = useState(true);
-  const [role, setRole] = useState<'picker' | 'store'>('picker');
+  const [role, setRole] = useState<'picker' | 'store' | 'ecommerce'>('picker');
   const [storeId, setStoreId] = useState('');
   const [storeName, setStoreName] = useState('');
   const [availableStores, setAvailableStores] = useState<{ id: string; name: string; address: string }[]>([]);
@@ -334,7 +334,20 @@ export default function AdminUsuariosPage() {
                   >
                     Tienda
                   </Button>
+                  <Button
+                    type="button"
+                    fullWidth
+                    variant={role === 'ecommerce' ? 'primary' : 'secondary'}
+                    onClick={() => setRole('ecommerce')}
+                  >
+                    eCommerce
+                  </Button>
                 </div>
+                {role === 'ecommerce' && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Accede a toda la sección Gestión (faltantes, vouchers, envíos) sin permisos de admin.
+                  </p>
+                )}
               </div>
 
               {/* Campos de tienda */}
@@ -478,7 +491,7 @@ export default function AdminUsuariosPage() {
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${
-                          !user.active ? 'bg-gray-400' : user.role === 'store' ? 'bg-emerald-500' : 'bg-brand-500'
+                          !user.active ? 'bg-gray-400' : user.role === 'store' ? 'bg-emerald-500' : user.role === 'ecommerce' ? 'bg-purple-500' : 'bg-brand-500'
                         }`}>
                           {user.role === 'store' ? '🏪' : user.name.charAt(0).toUpperCase()}
                         </div>
@@ -488,8 +501,8 @@ export default function AdminUsuariosPage() {
                             <Badge tone={user.active ? 'success' : 'gray'}>
                               {user.active ? 'Activo' : 'Inactivo'}
                             </Badge>
-                            <Badge tone={user.role === 'store' ? 'success' : 'info'}>
-                              {user.role === 'store' ? `Tienda: ${user.storeName || '?'}` : 'Picker'}
+                            <Badge tone={user.role === 'store' ? 'success' : user.role === 'ecommerce' ? 'purple' : 'info'}>
+                              {user.role === 'store' ? `Tienda: ${user.storeName || '?'}` : user.role === 'ecommerce' ? 'eCommerce' : 'Picker'}
                             </Badge>
                           </div>
                         </div>

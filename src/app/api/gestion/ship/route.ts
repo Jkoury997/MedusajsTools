@@ -10,7 +10,7 @@ import { errorResponse } from '@/lib/http';
 // POST /api/gestion/ship - Marcar pedido como enviado (crear shipment)
 export async function POST(req: NextRequest) {
   try {
-    await requireRole('admin');
+    await requireRole('admin', 'ecommerce');
     const em = await getEm();
     const { orderId, orderDisplayId } = await req.json();
 
