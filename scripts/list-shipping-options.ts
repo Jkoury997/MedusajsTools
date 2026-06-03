@@ -40,10 +40,12 @@ async function main() {
     console.log(`  ${o.id}   ${o.name}${o.type?.code ? `   [type: ${o.type.code}]` : ''}`);
   }
 
-  // Esqueleto para SHIPPING_OPTION_GROUPS: por defecto todo en "other", editá a mano.
-  const skeleton = Object.fromEntries(options.map((o) => [o.id, 'other']));
-  console.log('\nEsqueleto para SHIPPING_OPTION_GROUPS (editá el grupo de cada uno):\n');
-  console.log(`SHIPPING_OPTION_GROUPS='${JSON.stringify(skeleton)}'\n`);
+  // El mapeo de olas va por type.code (default incorporado en wave.ts). Solo
+  // necesitás esta env para codes nuevos o para pisar el default.
+  const codes = [...new Set(options.map((o) => o.type?.code).filter(Boolean))];
+  const skeleton = Object.fromEntries(codes.map((c) => [c as string, 'other']));
+  console.log('\nLas olas mapean por type.code (default en wave.ts). Override opcional por env:\n');
+  console.log(`SHIPPING_TYPE_GROUPS='${JSON.stringify(skeleton)}'\n`);
 }
 
 main()

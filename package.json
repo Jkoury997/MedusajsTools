@@ -9,7 +9,8 @@
     "lint": "eslint",
     "db:setup": "tsx scripts/setup-db.ts",
     "db:migrate-from-mongo": "tsx scripts/migrate-mongo-to-pg.ts",
-    "shipping:list": "tsx scripts/list-shipping-options.ts"
+    "shipping:list": "tsx scripts/list-shipping-options.ts",
+    "shipping:set-type": "tsx scripts/set-shipping-type.ts"
   },
   "dependencies": {
     "@mikro-orm/core": "^6.6.14",
