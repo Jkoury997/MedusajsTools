@@ -38,7 +38,11 @@ export interface WaveOrderSource {
   display_id: number;
   created_at: string;
   items: OrderItemLike[];
-  shipping_methods?: { name?: string; shipping_option_id?: string }[] | null;
+  shipping_methods?: {
+    name?: string;
+    shipping_option_id?: string;
+    shipping_option?: { type?: { code?: string } | null } | null;
+  }[] | null;
   metadata?: { sales_channel?: string } | null;
 }
 
@@ -85,23 +89,55 @@ function isWaveGroup(value: string): value is WaveGroup {
 }
 
 /**
- * Grupo de prioridad de un pedido. Prioridad de fuentes:
- *   1. Mapa exacto `shipping_option_id → grupo` (config, los `so_...` de Medusa).
- *   2. Canal de venta Mercado Libre (`metadata.sales_channel`).
- *   3. Fallback: clasificación por nombre del método (`shipping.ts`).
+ * Mapa por defecto `type.code` (de la shipping option de Medusa) → grupo.
+ * Fuente estable y semántica: opciones nuevas que reusen un code conocido (p.
+ * ej. otro "Envío Rápido" con `fast_shipping`) caen solas en su grupo. Se puede
+ * extender/pisar por env (`SHIPPING_TYPE_GROUPS`) sin tocar código.
+ */
+const CODE_GROUP_DEFAULT: Record<string, WaveGroup> = {
+  fast_shipping: 'express',
+  pickup_store: 'store_pickup',
+  shipping_address_classic: 'correo',
+  correo_pickup: 'correo',
+  via_cargo_customer: 'via_cargo',
+  express_shipping_customer: 'expreso_cliente',
+  pickup_factory: 'factory_pickup',
+};
+
+/** Mapa code→grupo efectivo: default incorporado pisado por el override de env. */
+function codeGroups(): Record<string, string> {
+  return { ...CODE_GROUP_DEFAULT, ...config.shippingTypeGroups };
+}
+
+/**
+ * Grupo de prioridad de un pedido. Orden de fuentes:
+ *   1. Override exacto por `shipping_option_id` (env `SHIPPING_OPTION_GROUPS`).
+ *   2. `type.code` de la shipping option (default incorporado + env).
+ *   3. Envío rápido por nombre (manda incluso sobre Mercado Libre).
+ *   4. Canal de venta Mercado Libre (`metadata.sales_channel`).
+ *   5. Fallback: clasificación por nombre del método (`shipping.ts`).
  */
 export function waveGroup(order: WaveOrderSource): WaveGroup {
-  // 1. Fuente autoritativa: el ID estable de la shipping option de Medusa.
-  const optionId = order.shipping_methods?.[0]?.shipping_option_id;
+  const method = order.shipping_methods?.[0];
+
+  // 1. Override exacto por ID (si lo configuraste por env).
+  const optionId = method?.shipping_option_id;
   if (optionId) {
     const mapped = config.shippingOptionGroups[optionId];
     if (mapped && isWaveGroup(mapped)) return mapped;
   }
-  // 2/3. Fallback mientras la opción no esté mapeada.
-  const category: ShippingCategory = classifyShippingName(order.shipping_methods?.[0]?.name);
+
+  // 2. Categoría estable por type.code.
+  const code = method?.shipping_option?.type?.code;
+  if (code) {
+    const mapped = codeGroups()[code];
+    if (mapped && isWaveGroup(mapped)) return mapped;
+  }
+
+  // 3/4/5. Fallbacks por nombre / canal.
+  const category: ShippingCategory = classifyShippingName(method?.name);
   if (category === 'express') return 'express';
   if (order.metadata?.sales_channel === 'mercadolibre') return 'mercado_libre';
-  // Las categorías restantes comparten nombre con el grupo.
   return category as WaveGroup;
 }
 

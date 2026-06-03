@@ -254,7 +254,8 @@ async function fetchAllOrders(): Promise<void> {
 
   // Campos reducidos: sin variant.product.* (lo más pesado)
   // +metadata se necesita para detectar órdenes de Mercado Libre (metadata.sales_channel)
-  const fields = '+shipping_address.*,+customer.*,+items.*,+items.variant.*,+shipping_methods.*,+payment_collections.payments.*,+metadata';
+  // +shipping_methods.shipping_option.type.code: categoría estable del envío (prioridad de olas)
+  const fields = '+shipping_address.*,+customer.*,+items.*,+items.variant.*,+shipping_methods.*,+shipping_methods.shipping_option.type.code,+payment_collections.payments.*,+metadata';
 
   while (hasMore) {
     const response = await medusaRequest<{ orders: unknown[]; count: number; offset: number; limit: number }>(

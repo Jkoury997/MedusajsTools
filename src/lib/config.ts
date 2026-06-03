@@ -25,6 +25,20 @@ function optional(name: string, fallback = ''): string {
   return v && v.trim() !== '' ? v.trim() : fallback;
 }
 
+/** Parsea una env con un objeto JSON plano string→string (mapas de grupos). */
+function parseGroupsEnv(name: string): Record<string, string> {
+  const raw = optional(name);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, string>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 export const config = {
   /** Postgres dedicado del pickup-system (MikroORM). */
   get databaseUrl(): string {
@@ -70,16 +84,16 @@ export const config = {
    * Vacío o un option_id sin mapear → cae al fallback por nombre.
    */
   get shippingOptionGroups(): Record<string, string> {
-    const raw = optional('SHIPPING_OPTION_GROUPS');
-    if (!raw) return {};
-    try {
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? (parsed as Record<string, string>)
-        : {};
-    } catch {
-      return {};
-    }
+    return parseGroupsEnv('SHIPPING_OPTION_GROUPS');
+  },
+  /**
+   * Override del mapa `type.code` → grupo de prioridad de olas, en JSON. Se
+   * mergea SOBRE el default incorporado (ver `wave.ts`), así podés mapear codes
+   * nuevos sin tocar código. Ej:
+   *   SHIPPING_TYPE_GROUPS={"fast_shipping":"express","correo_pickup":"correo"}
+   */
+  get shippingTypeGroups(): Record<string, string> {
+    return parseGroupsEnv('SHIPPING_TYPE_GROUPS');
   },
   /** Duración de la sesión en ms (12 horas). */
   sessionDurationMs: 12 * 60 * 60 * 1000,
