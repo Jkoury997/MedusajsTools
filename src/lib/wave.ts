@@ -6,6 +6,7 @@
  */
 import { getPaidOrders } from './medusa';
 import { classifyShippingName, type ShippingCategory } from './shipping';
+import { config } from './config';
 import type { EntityManager } from '@mikro-orm/postgresql';
 import { PickingWave } from './entities';
 
@@ -37,7 +38,7 @@ export interface WaveOrderSource {
   display_id: number;
   created_at: string;
   items: OrderItemLike[];
-  shipping_methods?: { name?: string }[] | null;
+  shipping_methods?: { name?: string; shipping_option_id?: string }[] | null;
   metadata?: { sales_channel?: string } | null;
 }
 
@@ -79,10 +80,25 @@ const WAVE_GROUP_LABEL: Record<WaveGroup, string> = {
   other: 'El resto',
 };
 
-/** Grupo de prioridad de un pedido (canal ML > categoría de envío). */
+function isWaveGroup(value: string): value is WaveGroup {
+  return (WAVE_GROUP_ORDER as string[]).includes(value);
+}
+
+/**
+ * Grupo de prioridad de un pedido. Prioridad de fuentes:
+ *   1. Mapa exacto `shipping_option_id → grupo` (config, los `so_...` de Medusa).
+ *   2. Canal de venta Mercado Libre (`metadata.sales_channel`).
+ *   3. Fallback: clasificación por nombre del método (`shipping.ts`).
+ */
 export function waveGroup(order: WaveOrderSource): WaveGroup {
+  // 1. Fuente autoritativa: el ID estable de la shipping option de Medusa.
+  const optionId = order.shipping_methods?.[0]?.shipping_option_id;
+  if (optionId) {
+    const mapped = config.shippingOptionGroups[optionId];
+    if (mapped && isWaveGroup(mapped)) return mapped;
+  }
+  // 2/3. Fallback mientras la opción no esté mapeada.
   const category: ShippingCategory = classifyShippingName(order.shipping_methods?.[0]?.name);
-  // El envío rápido manda incluso sobre Mercado Libre.
   if (category === 'express') return 'express';
   if (order.metadata?.sales_channel === 'mercadolibre') return 'mercado_libre';
   // Las categorías restantes comparten nombre con el grupo.

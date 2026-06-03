@@ -60,6 +60,27 @@ export const config = {
       .map((o) => o.trim())
       .filter(Boolean);
   },
+  /**
+   * Mapa `shipping_option_id` → grupo de prioridad de olas, en JSON.
+   * Fuente de verdad EXACTA (los `so_...` de Medusa son estables), en vez de
+   * adivinar por el nombre del método. Ej:
+   *   SHIPPING_OPTION_GROUPS={"so_123":"express","so_456":"mercado_libre"}
+   * Grupos válidos: express | mercado_libre | store_pickup | correo |
+   * via_cargo | expreso_cliente | factory_pickup | other.
+   * Vacío o un option_id sin mapear → cae al fallback por nombre.
+   */
+  get shippingOptionGroups(): Record<string, string> {
+    const raw = optional('SHIPPING_OPTION_GROUPS');
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, string>)
+        : {};
+    } catch {
+      return {};
+    }
+  },
   /** Duración de la sesión en ms (12 horas). */
   sessionDurationMs: 12 * 60 * 60 * 1000,
 } as const;
