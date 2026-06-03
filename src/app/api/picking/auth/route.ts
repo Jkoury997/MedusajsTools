@@ -45,13 +45,13 @@ export async function POST(req: NextRequest) {
 
     const user = await em.findOne(User, {
       pin: { $in: pinLookupHashes(pin) },
-      role: 'picker',
+      role: { $in: ['picker', 'ecommerce'] },
       active: true,
     });
 
     if (!user) {
       return NextResponse.json(
-        { success: false, error: 'PIN incorrecto o no sos picker' },
+        { success: false, error: 'PIN incorrecto o sin permiso de picking' },
         { status: 401 }
       );
     }
