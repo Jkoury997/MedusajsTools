@@ -223,6 +223,32 @@ const ORDERS_CACHE_DURATION = 120 * 1000;
 let allPaidOrdersCache: { orders: any[]; timestamp: number } | null = null;
 let fetchingPromise: Promise<void> | null = null;
 
+// Caché del mapa shipping_option_id -> type.code (categoría estable del envío).
+// Se trae aparte de las órdenes (la relación no es expandible desde la orden).
+const SHIPPING_OPTIONS_CACHE_DURATION = 10 * 60 * 1000; // 10 min
+let shippingOptionCodeCache: { map: Record<string, string>; timestamp: number } | null = null;
+
+/** Devuelve { shipping_option_id: type.code } de Medusa, cacheado 10 min. */
+export async function getShippingOptionCodeMap(): Promise<Record<string, string>> {
+  if (shippingOptionCodeCache && Date.now() - shippingOptionCodeCache.timestamp < SHIPPING_OPTIONS_CACHE_DURATION) {
+    return shippingOptionCodeCache.map;
+  }
+  try {
+    const data = await medusaRequest<{ shipping_options: { id: string; type?: { code?: string } | null }[] }>(
+      '/admin/shipping-options?limit=200&fields=id,type.code',
+    );
+    const map: Record<string, string> = {};
+    for (const o of data.shipping_options || []) {
+      if (o.id && o.type?.code) map[o.id] = o.type.code;
+    }
+    shippingOptionCodeCache = { map, timestamp: Date.now() };
+    return map;
+  } catch (e) {
+    console.error('[getShippingOptionCodeMap] Error:', e);
+    return shippingOptionCodeCache?.map || {};
+  }
+}
+
 // Detectar si un pedido tiene pago en efectivo
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function isCashPayment(order: any): boolean {
@@ -254,8 +280,7 @@ async function fetchAllOrders(): Promise<void> {
 
   // Campos reducidos: sin variant.product.* (lo más pesado)
   // +metadata se necesita para detectar órdenes de Mercado Libre (metadata.sales_channel)
-  // +shipping_methods.shipping_option.type.code: categoría estable del envío (prioridad de olas)
-  const fields = '+shipping_address.*,+customer.*,+items.*,+items.variant.*,+shipping_methods.*,+shipping_methods.shipping_option.type.code,+payment_collections.payments.*,+metadata';
+  const fields = '+shipping_address.*,+customer.*,+items.*,+items.variant.*,+shipping_methods.*,+payment_collections.payments.*,+metadata';
 
   while (hasMore) {
     const response = await medusaRequest<{ orders: unknown[]; count: number; offset: number; limit: number }>(
