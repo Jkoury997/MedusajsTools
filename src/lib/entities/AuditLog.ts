@@ -22,7 +22,13 @@ export type AuditAction =
   | 'store_login'
   | 'login'
   | 'api_key_create'
-  | 'api_key_revoke';
+  | 'api_key_revoke'
+  | 'wave_create'
+  | 'wave_pick'
+  | 'wave_pick_complete'
+  | 'wave_sort'
+  | 'wave_order_ready'
+  | 'wave_cancel';
 
 /** Registro de auditoría (antes AuditLog en Mongo). */
 export class AuditLog {

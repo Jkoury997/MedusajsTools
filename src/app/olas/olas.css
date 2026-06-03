@@ -1,0 +1,134 @@
+/* Picking por Olas — estilos de la feature, scopeados bajo .olas-root para no
+ * colisionar con Tailwind ni con el resto de la app. Basado en el design system
+ * de la marca (mismos tokens que globals.css). */
+.olas-root {
+  --pink: #f64f8b; --pink-h: #e02e6f; --pink-50: #fff1f6; --pink-100: #ffe4ee; --pink-fg: #bd1f59;
+  --bg: #f6f7f9; --surface: #fff; --border: #e5e7eb; --ink: #111827; --muted: #6b7280;
+  --ok: #16a34a; --ok-bg: #dcfce7; --warn: #d97706; --warn-bg: #fef3c7; --danger: #dc2626; --danger-bg: #fee2e2;
+  --info: #2563eb; --info-bg: #dbeafe; --soft: #f3f4f6;
+  --r: 14px;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* pantalla full-bleed mobile, centrada en desktop */
+.olas-root .screen {
+  display: flex; flex-direction: column; min-height: 100dvh;
+  max-width: 480px; margin: 0 auto; background: var(--surface);
+}
+.olas-root .head { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.olas-root .head .back { width: 36px; height: 36px; border-radius: 11px; background: var(--soft); display: flex; align-items: center; justify-content: center; color: #374151; flex: none; border: none; cursor: pointer; }
+.olas-root .head h3 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: -.01em; }
+.olas-root .head .sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.olas-root .head .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.olas-root .body { flex: 1; overflow-y: auto; padding: 4px 16px 18px; display: flex; flex-direction: column; gap: 13px; }
+
+.olas-root .seg { display: flex; gap: 6px; background: var(--soft); border-radius: 13px; padding: 5px; }
+.olas-root .seg .opt { flex: 1; border: none; background: none; font: inherit; font-size: 14px; font-weight: 700; color: var(--muted); padding: 10px; border-radius: 9px; text-align: center; cursor: pointer; }
+.olas-root .seg .opt[data-active="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+
+.olas-root .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 15px; box-shadow: 0 1px 2px rgba(16,24,40,.05); }
+.olas-root .card.pad0 { padding: 0; overflow: hidden; }
+.olas-root .row { display: flex; align-items: center; }
+.olas-root .between { justify-content: space-between; }
+.olas-root .gap6 { gap: 6px; } .olas-root .gap8 { gap: 8px; } .olas-root .gap10 { gap: 10px; } .olas-root .gap12 { gap: 12px; }
+.olas-root .muted { color: var(--muted); }
+.olas-root .divide { height: 1px; background: var(--border); }
+.olas-root .sect-label { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+
+.olas-root .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font: inherit; font-weight: 700; font-size: 15px; border: none; cursor: pointer; border-radius: 13px; padding: 14px 18px; line-height: 1; }
+.olas-root .btn:disabled { opacity: .5; cursor: not-allowed; }
+.olas-root .btn-lg { padding: 16px; font-size: 16px; }
+.olas-root .btn-block { width: 100%; }
+.olas-root .btn-primary { background: var(--pink); color: #fff; }
+.olas-root .btn-secondary { background: #fff; color: #1f2937; border: 1px solid var(--border); }
+.olas-root .btn-success { background: var(--ok); color: #fff; }
+.olas-root .btn-danger { background: var(--danger); color: #fff; }
+.olas-root .btn-ghost { background: none; color: var(--muted); }
+
+.olas-root .badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.olas-root .b-gray { background: var(--soft); color: #475569; }
+.olas-root .b-pink { background: var(--pink-100); color: var(--pink-fg); }
+.olas-root .b-ok { background: var(--ok-bg); color: #15803d; }
+.olas-root .b-warn { background: var(--warn-bg); color: #b45309; }
+.olas-root .b-danger { background: var(--danger-bg); color: #b91c1c; }
+.olas-root .b-info { background: var(--info-bg); color: #1d4ed8; }
+
+.olas-root .prog { height: 10px; background: var(--soft); border-radius: 99px; overflow: hidden; }
+.olas-root .prog > i { display: block; height: 100%; background: var(--pink); border-radius: 99px; transition: width .25s ease; }
+.olas-root .prog.big { height: 14px; }
+.olas-root .prog.ok > i { background: var(--ok); }
+
+.olas-root .lcircle { width: 34px; height: 34px; border-radius: 999px; background: var(--pink-100); color: var(--pink-fg); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; flex: none; }
+
+.olas-root .lrow { display: flex; align-items: center; gap: 12px; padding: 13px 14px; }
+.olas-root .lrow .ttl { font-weight: 700; font-size: 14.5px; }
+.olas-root .lrow .mono { font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.olas-root .count { font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+.olas-root .count .tot { color: var(--muted); font-weight: 700; font-size: 15px; }
+.olas-root .thumb { width: 42px; height: 42px; border-radius: 11px; background: var(--pink-50); border: 1px solid var(--pink-100); display: flex; align-items: center; justify-content: center; color: #f9a8c8; flex: none; }
+.olas-root .toggle { width: 46px; height: 28px; border-radius: 99px; background: var(--pink); position: relative; flex: none; border: none; cursor: pointer; }
+.olas-root .toggle::after { content: ""; position: absolute; top: 3px; left: 21px; width: 22px; height: 22px; border-radius: 99px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: left .15s; }
+.olas-root .toggle.off { background: #cbd5e1; }
+.olas-root .toggle.off::after { left: 3px; }
+
+.olas-root .scan { display: flex; align-items: center; gap: 11px; background: #0f172a; border-radius: 14px; padding: 14px 15px; }
+.olas-root .scan.lite { background: #fff; border: 2px solid var(--pink); }
+.olas-root .scan input { flex: 1; background: none; border: none; outline: none; color: #fff; font-family: ui-monospace, monospace; font-size: 14px; }
+.olas-root .scan input::placeholder { color: #94a3b8; }
+.olas-root .scan.lite input { color: var(--ink); }
+.olas-root .scan .blink { width: 2px; height: 18px; background: var(--pink); animation: olasblink 1s steps(2) infinite; }
+@keyframes olasblink { 0%,50% { opacity: 1 } 51%,100% { opacity: 0 } }
+
+.olas-root .collap { border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
+.olas-root .collap .ch { display: flex; align-items: center; justify-content: space-between; padding: 13px 14px; background: #fafafa; font-weight: 700; font-size: 14px; cursor: pointer; }
+
+.olas-root .pfoot { padding: 12px 16px 16px; border-top: 1px solid var(--border); background: #fff; display: flex; flex-direction: column; gap: 10px; }
+.olas-root .pfoot .sumline { display: flex; justify-content: space-between; font-size: 13px; }
+
+.olas-root .giant { border-radius: 18px; padding: 26px 18px; text-align: center; color: #fff; position: relative; overflow: hidden; background: linear-gradient(150deg, var(--pink), var(--pink-h)); animation: olaspop .18s ease; }
+.olas-root .giant.ok { background: linear-gradient(150deg, #16a34a, #15803d); }
+.olas-root .giant.err { background: linear-gradient(150deg, #dc2626, #b91c1c); }
+@keyframes olaspop { from { transform: scale(.96); opacity: .4 } to { transform: scale(1); opacity: 1 } }
+.olas-root .giant .lbl { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .14em; opacity: .85; }
+.olas-root .giant .L { font-size: 150px; font-weight: 800; line-height: .9; letter-spacing: -.04em; margin: 2px 0; }
+.olas-root .giant .ped { font-size: 20px; font-weight: 800; }
+.olas-root .giant .prod { font-size: 14px; opacity: .9; margin-top: 2px; }
+.olas-root .giant .errmsg { font-size: 20px; font-weight: 800; padding: 24px 0; }
+
+.olas-root .wall { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.olas-root .cell { border: 2px solid var(--border); border-radius: 14px; padding: 11px 12px; background: #fff; position: relative; min-height: 78px; display: flex; flex-direction: column; gap: 7px; }
+.olas-root .cell .cl-top { display: flex; align-items: center; justify-content: space-between; }
+.olas-root .cell .cl-L { font-size: 24px; font-weight: 800; line-height: 1; }
+.olas-root .cell .cl-ped { font-size: 12px; color: var(--muted); font-weight: 600; }
+.olas-root .cell .cl-pr { font-size: 12px; font-weight: 700; }
+.olas-root .cell.active { border-color: var(--pink); box-shadow: 0 0 0 3px var(--pink-100); }
+.olas-root .cell.done { background: var(--ok-bg); border-color: #86efac; }
+.olas-root .cell.done .cl-L { color: #15803d; }
+.olas-root .cell.empty { background: #fafafa; border-style: dashed; opacity: .7; }
+.olas-root .cell.empty .cl-L { color: #cbd5e1; }
+.olas-root .miniprog { height: 6px; background: var(--soft); border-radius: 99px; overflow: hidden; }
+.olas-root .miniprog > i { display: block; height: 100%; background: var(--pink); transition: width .2s; }
+.olas-root .cell.done .miniprog > i { background: var(--ok); }
+
+.olas-root .toast { display: flex; align-items: center; gap: 10px; border-radius: 13px; padding: 13px 15px; font-weight: 700; font-size: 14px; box-shadow: 0 8px 24px rgba(16,24,40,.14); }
+.olas-root .toast.ok { background: var(--ok); color: #fff; }
+.olas-root .toast.err { background: var(--danger); color: #fff; }
+.olas-root .toast .ico { width: 24px; height: 24px; border-radius: 999px; background: rgba(255,255,255,.22); display: flex; align-items: center; justify-content: center; flex: none; }
+
+.olas-root .empty { text-align: center; padding: 34px 18px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.olas-root .empty .ill { width: 84px; height: 84px; border-radius: 24px; background: var(--pink-50); border: 1px solid var(--pink-100); display: flex; align-items: center; justify-content: center; color: var(--pink); }
+.olas-root .empty h4 { margin: 0; font-size: 16px; font-weight: 800; }
+.olas-root .empty p { margin: 0; font-size: 13.5px; color: var(--muted); max-width: 240px; }
+
+.olas-root .overlay { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: flex-end; justify-content: center; z-index: 50; }
+.olas-root .sheet { background: #fff; border-radius: 22px 22px 0 0; width: 100%; max-width: 480px; padding: 20px 18px 26px; }
+.olas-root .sheet h4 { margin: 0 0 6px; font-size: 18px; font-weight: 800; }
+.olas-root .sheet p { margin: 0 0 14px; font-size: 14px; color: var(--muted); line-height: 1.45; }
+.olas-root .ta { width: 100%; border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px; font: inherit; font-size: 14px; resize: none; outline: none; }
+.olas-root .ta:focus { border-color: var(--pink); box-shadow: 0 0 0 3px var(--pink-100); }
+
+.olas-root svg.i { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.olas-root .center { text-align: center; }
+.olas-root .spin { width: 28px; height: 28px; border: 3px solid var(--soft); border-top-color: var(--pink); border-radius: 999px; animation: olasspin .7s linear infinite; margin: 40px auto; }
+@keyframes olasspin { to { transform: rotate(360deg) } }
