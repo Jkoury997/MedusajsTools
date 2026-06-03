@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
 
     const actingId: string = bodyUserId || session.userId;
 
-    // Validar actor: acepta store, picker (solo fábrica) o admin
+    // Validar actor: acepta store, ecommerce, picker (solo fábrica) o admin
     let userName = 'Admin';
     let userRole = 'admin';
     let userStoreId = '';
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       userRole = 'admin';
     } else {
       const user = await em.findOne(User, { id: actingId });
-      if (!user || !user.active || (user.role !== 'store' && user.role !== 'picker')) {
+      if (!user || !user.active || (user.role !== 'store' && user.role !== 'picker' && user.role !== 'ecommerce')) {
         return NextResponse.json(
           { success: false, error: 'Usuario no autorizado' },
           { status: 401 }
