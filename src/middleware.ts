@@ -32,9 +32,9 @@ const GESTION_PATHS = [
 ];
 const GESTION_ROLES = new Set(['picker', 'ecommerce', 'admin']);
 
-// Flujo de tienda (recibir + entregar a la clienta): solo store y admin.
-// Un picker/ecommerce no entrega al cliente final.
-const TIENDA_ROLES = new Set(['store', 'admin']);
+// Nota: la entrega a la clienta (/api/picking/deliver) la pueden hacer store,
+// ecommerce y picker (este último SOLO retiro en fábrica). Esa distinción fina
+// la valida el propio handler por rol + tipo de envío, no el middleware.
 
 function isGestionPath(pathname: string): boolean {
   return GESTION_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -164,25 +164,20 @@ export async function middleware(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 });
   }
 
-  // Endpoints de tienda: Bearer (tienda) o cookie (store/admin).
+  // Endpoints de entrega/tienda: Bearer (tienda) o cookie (store/picker/ecommerce/admin).
+  // El rol fino (p. ej. picker solo retiro en fábrica) lo valida el handler.
   if (STORE_TOKEN_PATHS.some((p) => pathname.startsWith(p))) {
-    let session: { userId: string; role: string } | null = null;
     const authHeader = request.headers.get('authorization');
     if (authHeader?.startsWith('Bearer ')) {
-      session = await verifyToken(authHeader.slice(7));
+      const session = await verifyToken(authHeader.slice(7));
+      if (session) return NextResponse.next();
     }
-    if (!session) {
-      const sessionCookie = request.cookies.get('picking-session');
-      if (sessionCookie?.value) session = await verifyToken(sessionCookie.value);
+    const sessionCookie = request.cookies.get('picking-session');
+    if (sessionCookie?.value) {
+      const session = await verifyToken(sessionCookie.value);
+      if (session) return NextResponse.next();
     }
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Autenticacion requerida' }, { status: 401 });
-    }
-    // Solo la tienda (y el admin) entrega a la clienta; picker/ecommerce no.
-    if (!TIENDA_ROLES.has(session.role)) {
-      return NextResponse.json({ success: false, error: 'No autorizado para este recurso' }, { status: 403 });
-    }
-    return NextResponse.next();
+    return NextResponse.json({ success: false, error: 'Autenticacion requerida' }, { status: 401 });
   }
 
   // Resto: requiere cookie de sesión.
