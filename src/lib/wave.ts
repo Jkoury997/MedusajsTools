@@ -5,6 +5,7 @@
  * en la mesa (put-to-wall). Convive con el flujo individual.
  */
 import { getPaidOrders } from './medusa';
+import { classifyShippingName, type ShippingCategory } from './shipping';
 import type { EntityManager } from '@mikro-orm/postgresql';
 import { PickingWave } from './entities';
 
@@ -36,13 +37,83 @@ export interface WaveOrderSource {
   display_id: number;
   created_at: string;
   items: OrderItemLike[];
+  shipping_methods?: { name?: string }[] | null;
+  metadata?: { sales_channel?: string } | null;
+}
+
+/**
+ * Grupos de prioridad para armar las olas al inicio del día, de la prioridad
+ * MÁS ALTA a la MÁS BAJA. Mercado Libre no es una categoría de envío sino el
+ * canal de venta, por eso se evalúa aparte (entre "envío rápido" y "envío a
+ * tienda"). El resto mapea 1:1 con las categorías de `shipping.ts`.
+ */
+export type WaveGroup =
+  | 'express'
+  | 'mercado_libre'
+  | 'store_pickup'
+  | 'correo'
+  | 'via_cargo'
+  | 'expreso_cliente'
+  | 'factory_pickup'
+  | 'other';
+
+const WAVE_GROUP_ORDER: WaveGroup[] = [
+  'express', // 1. envío rápido
+  'mercado_libre', // 2. mercado libre
+  'store_pickup', // 3. envío a tienda
+  'correo', // 4. correo argentino
+  'via_cargo', // 5. vía cargo
+  'expreso_cliente', // 6. expreso
+  'factory_pickup', // 7. retiro por fábrica
+  'other', // 8. el resto
+];
+
+const WAVE_GROUP_LABEL: Record<WaveGroup, string> = {
+  express: 'Envío rápido',
+  mercado_libre: 'Mercado Libre',
+  store_pickup: 'Envío a tienda',
+  correo: 'Correo Argentino',
+  via_cargo: 'Vía Cargo',
+  expreso_cliente: 'Expreso',
+  factory_pickup: 'Retiro en fábrica',
+  other: 'El resto',
+};
+
+/** Grupo de prioridad de un pedido (canal ML > categoría de envío). */
+export function waveGroup(order: WaveOrderSource): WaveGroup {
+  const category: ShippingCategory = classifyShippingName(order.shipping_methods?.[0]?.name);
+  // El envío rápido manda incluso sobre Mercado Libre.
+  if (category === 'express') return 'express';
+  if (order.metadata?.sales_channel === 'mercadolibre') return 'mercado_libre';
+  // Las categorías restantes comparten nombre con el grupo.
+  return category as WaveGroup;
+}
+
+/** Índice de prioridad del grupo (0 = más alta). */
+export function waveGroupPriority(group: WaveGroup): number {
+  return WAVE_GROUP_ORDER.indexOf(group);
+}
+
+/** Etiqueta legible del grupo de prioridad. */
+export function waveGroupLabel(group: WaveGroup): string {
+  return WAVE_GROUP_LABEL[group];
+}
+
+/** Comparador de olas: prioridad de grupo y, dentro del grupo, más antiguo primero. */
+export function compareWavePriority(a: WaveOrderSource, b: WaveOrderSource): number {
+  const ga = waveGroupPriority(waveGroup(a));
+  const gb = waveGroupPriority(waveGroup(b));
+  if (ga !== gb) return ga - gb;
+  return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
 }
 
 /**
  * Trae los pedidos a PREPARAR del depósito central (fulfillment_status
- * not_fulfilled / partially_fulfilled), de todas las tiendas, ordenados del más
- * antiguo al más nuevo (prioridad de la ola). El fulfillment se crea al cerrar
- * la ola, así que la ola se arma sobre pedidos todavía sin preparar.
+ * not_fulfilled / partially_fulfilled), de todas las tiendas, ordenados por
+ * PRIORIDAD de grupo (envío rápido → ML → tienda → correo → vía cargo →
+ * expreso → fábrica → el resto) y, dentro de cada grupo, del más antiguo al más
+ * nuevo. El fulfillment se crea al cerrar la ola, así que la ola se arma sobre
+ * pedidos todavía sin preparar.
  */
 export async function getPendingOrders(): Promise<WaveOrderSource[]> {
   const preparar = await getPaidOrders(200, 0, 'preparar');
@@ -50,10 +121,7 @@ export async function getPendingOrders(): Promise<WaveOrderSource[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const orders = (preparar.orders as any[]).filter((order) => (order.items?.length || 0) > 0);
 
-  // Más antiguos primero = mayor prioridad.
-  orders.sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  );
+  orders.sort(compareWavePriority);
 
   return orders as WaveOrderSource[];
 }

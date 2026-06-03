@@ -56,6 +56,8 @@ export interface SuggestOrder {
   orderDisplayId: number;
   createdAt: string;
   itemCount: number;
+  group: string;
+  groupLabel: string;
 }
 export interface SuggestLine {
   key: string;
