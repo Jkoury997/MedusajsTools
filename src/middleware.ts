@@ -20,6 +20,26 @@ const STORE_TOKEN_PATHS = [
   '/api/picking/store-orders',
 ];
 
+// Separación de capacidades por rol.
+// Preparación (olas/gestión): la operan picker y ecommerce; el admin entra a todo.
+// La tienda (store) NO prepara: solo recibe y marca entregado a la clienta.
+const GESTION_PATHS = [
+  '/gestion',
+  '/olas',
+  '/api/gestion',
+  '/api/picking/waves',
+  '/api/picking/ml-label',
+];
+const GESTION_ROLES = new Set(['picker', 'ecommerce', 'admin']);
+
+// Nota: la entrega a la clienta (/api/picking/deliver) la pueden hacer store,
+// ecommerce y picker (este último SOLO retiro en fábrica). Esa distinción fina
+// la valida el propio handler por rol + tipo de envío, no el middleware.
+
+function isGestionPath(pathname: string): boolean {
+  return GESTION_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 // Rutas públicas que no necesitan autenticación.
 const PUBLIC_PATHS = [
   '/login',
@@ -131,6 +151,10 @@ export async function middleware(request: NextRequest) {
     if (sessionCookie?.value) {
       const session = await verifyToken(sessionCookie.value);
       if (session) {
+        // La tienda no opera recursos de preparación (gestión/olas).
+        if (isGestionPath(pathname) && !GESTION_ROLES.has(session.role)) {
+          return NextResponse.json({ success: false, error: 'No autorizado para este recurso' }, { status: 403 });
+        }
         const response = NextResponse.next();
         if (allowedOrigin) response.headers.set('Access-Control-Allow-Origin', allowedOrigin);
         return response;
@@ -140,7 +164,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 });
   }
 
-  // Endpoints de tienda: Bearer (tienda) o cookie (picker/admin).
+  // Endpoints de entrega/tienda: Bearer (tienda) o cookie (store/picker/ecommerce/admin).
+  // El rol fino (p. ej. picker solo retiro en fábrica) lo valida el handler.
   if (STORE_TOKEN_PATHS.some((p) => pathname.startsWith(p))) {
     const authHeader = request.headers.get('authorization');
     if (authHeader?.startsWith('Bearer ')) {
@@ -183,6 +208,14 @@ export async function middleware(request: NextRequest) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('error', 'admin');
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Preparación (gestión/olas): la tienda no entra; se la manda a su flujo.
+  if (isGestionPath(pathname) && !GESTION_ROLES.has(session.role)) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ success: false, error: 'No autorizado para este recurso' }, { status: 403 });
+    }
+    return NextResponse.redirect(new URL('/tienda', request.url));
   }
 
   return NextResponse.next();

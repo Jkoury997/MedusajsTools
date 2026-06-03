@@ -5,7 +5,7 @@ import { errorResponse, HttpError } from '@/lib/http';
 import { audit } from '@/lib/audit';
 import { invalidateOrdersCache } from '@/lib/medusa';
 import { PickingWave, User } from '@/lib/entities';
-import { resolveStoreId, serializeWave } from '@/lib/wave';
+import { serializeWave } from '@/lib/wave';
 import { finalizeWaveOrder, type FinalizeResult } from '@/lib/wave-complete';
 
 interface RouteParams {
@@ -22,17 +22,20 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
     const wave = await em.findOne(PickingWave, { id }, { populate: ['orders.items'] });
     if (!wave) throw new HttpError(404, 'Ola no encontrada');
-    await resolveStoreId(em, session, wave.storeId);
 
     if (wave.status !== 'ready') {
       throw new HttpError(400, `La ola está en "${wave.status}"; cerrá la clasificación antes`);
     }
 
-    // El fulfillment necesita un usuario real (PickingSession.user es requerido).
+    // La PickingSession necesita un usuario real. Usamos el actor; si es el login
+    // admin (sin User propio), caemos al creador de la ola o a un admin del sistema.
     const actorId = session.userId === 'admin' ? wave.createdByUserId : session.userId;
-    const user = actorId ? await em.findOne(User, { id: actorId }) : null;
+    const user =
+      (actorId ? await em.findOne(User, { id: actorId }) : null) ||
+      (await em.findOne(User, { role: 'admin' })) ||
+      (await em.findOne(User, {}));
     if (!user) {
-      throw new HttpError(400, 'Hace falta un usuario real para cerrar la ola');
+      throw new HttpError(400, 'No hay ningún usuario en el sistema para registrar el cierre');
     }
 
     const results: FinalizeResult[] = [];

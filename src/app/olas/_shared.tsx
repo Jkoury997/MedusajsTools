@@ -83,10 +83,9 @@ export const STATUS_BADGE: Record<WaveStatus, { label: string; cls: string }> = 
 // ---------- API helper ----------
 export async function api<T = unknown>(
   path: string,
-  opts: { method?: string; body?: unknown; store?: string | null } = {}
+  opts: { method?: string; body?: unknown } = {}
 ): Promise<T> {
-  const url = opts.store ? `${path}${path.includes('?') ? '&' : '?'}storeId=${opts.store}` : path;
-  const res = await fetch(url, {
+  const res = await fetch(path, {
     method: opts.method || 'GET',
     credentials: 'include',
     headers: opts.body ? { 'Content-Type': 'application/json' } : undefined,
@@ -97,15 +96,6 @@ export async function api<T = unknown>(
     throw new Error(data?.error || `Error ${res.status}`);
   }
   return data as T;
-}
-
-/** storeId opcional desde la query (?store=) para el caso admin. Se lee una sola
- *  vez al montar (init lazy) para no cambiar después y evitar renders en cascada. */
-export function useStoreParam(): string | null {
-  const [store] = useState<string | null>(() =>
-    typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('store')
-  );
-  return store;
 }
 
 export function timeAgo(iso?: string): string {

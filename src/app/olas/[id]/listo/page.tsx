@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { api, Icon, Wave, sum, useStoreParam } from '../../_shared';
+import { api, Icon, Wave, sum } from '../../_shared';
 
 export default function Listo() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
-  const store = useStoreParam();
   const [wave, setWave] = useState<Wave | null>(null);
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
@@ -16,14 +15,14 @@ export default function Listo() {
     let ignore = false;
     (async () => {
       try {
-        const data = await api<{ wave: Wave }>(`/api/picking/waves/${id}`, { store });
+        const data = await api<{ wave: Wave }>(`/api/picking/waves/${id}`);
         if (!ignore) setWave(data.wave);
       } catch (e) {
         if (!ignore) setError((e as Error).message);
       }
     })();
     return () => { ignore = true; };
-  }, [id, store]);
+  }, [id]);
 
   async function send() {
     setSending(true);
@@ -40,7 +39,6 @@ export default function Listo() {
     }
   }
 
-  const q = store ? `?store=${store}` : '';
   const orders = wave?.orders || [];
   const missingFor = (o: Wave['orders'][number]) => sum(o.items.map((i) => i.quantityMissing));
   const sinFaltante = orders.filter((o) => missingFor(o) === 0).length;
@@ -49,7 +47,7 @@ export default function Listo() {
   return (
     <div className="screen">
       <header className="head">
-        <button className="back" onClick={() => router.push(`/olas${q}`)}><Icon name="back" /></button>
+        <button className="back" onClick={() => router.push(`/olas`)}><Icon name="back" /></button>
         <div>
           <h3>Ola #{wave?.displayNumber ?? ''}</h3>
           <div className="sub">{completed ? 'Enviada al flujo' : 'Lista para enviar'}</div>
@@ -128,7 +126,7 @@ export default function Listo() {
       {wave && (
         <footer className="pfoot">
           {completed ? (
-            <button className="btn btn-primary btn-block btn-lg" onClick={() => router.push(`/olas${q}`)}>
+            <button className="btn btn-primary btn-block btn-lg" onClick={() => router.push(`/olas`)}>
               Volver a olas
             </button>
           ) : (

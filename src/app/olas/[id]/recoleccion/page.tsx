@@ -3,13 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  api, Icon, ScanInput, Toast, useToast, Wave, WaveLine, sum, useStoreParam,
+  api, Icon, ScanInput, Toast, useToast, Wave, WaveLine, sum,
 } from '../../_shared';
 
 export default function Recoleccion() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
-  const store = useStoreParam();
   const { toast, show } = useToast();
   const [wave, setWave] = useState<Wave | null>(null);
   const [error, setError] = useState('');
@@ -21,14 +20,14 @@ export default function Recoleccion() {
     let ignore = false;
     (async () => {
       try {
-        const data = await api<{ wave: Wave }>(`/api/picking/waves/${id}`, { store });
+        const data = await api<{ wave: Wave }>(`/api/picking/waves/${id}`);
         if (!ignore) setWave(data.wave);
       } catch (e) {
         if (!ignore) setError((e as Error).message);
       }
     })();
     return () => { ignore = true; };
-  }, [id, store]);
+  }, [id]);
 
   const matches = (l: WaveLine, code: string) =>
     l.barcode === code || l.sku === code || l.variantId === code;
@@ -53,8 +52,7 @@ export default function Recoleccion() {
     setFinishing(true);
     try {
       await api(`/api/picking/waves/${id}/pick/complete`, { method: 'POST' });
-      const q = store ? `?store=${store}` : '';
-      router.push(`/olas/${id}/mesa${q}`);
+      router.push(`/olas/${id}/mesa`);
     } catch (e) {
       show('err', (e as Error).message);
       setFinishing(false);
@@ -69,7 +67,6 @@ export default function Recoleccion() {
     else finish();
   }
 
-  const q = store ? `?store=${store}` : '';
   const totalReq = wave ? sum(wave.lines.map((l) => l.quantityRequired)) : 0;
   const totalPicked = wave ? sum(wave.lines.map((l) => l.quantityPicked)) : 0;
   const pct = totalReq > 0 ? Math.round((totalPicked / totalReq) * 100) : 0;
@@ -78,13 +75,13 @@ export default function Recoleccion() {
   return (
     <div className="screen">
       <header className="head">
-        <button className="back" onClick={() => router.push(`/olas${q}`)}><Icon name="back" /></button>
+        <button className="back" onClick={() => router.push(`/olas`)}><Icon name="back" /></button>
         <div>
           <h3>Ola #{wave?.displayNumber ?? ''} · Recolección</h3>
           <div className="sub">Juntá todo en una recorrida</div>
         </div>
         <div className="right">
-          <button className="back" onClick={() => router.push(`/olas/${id}/imprimir${q}`)} aria-label="imprimir">
+          <button className="back" onClick={() => router.push(`/olas/${id}/imprimir`)} aria-label="imprimir">
             <Icon name="print" />
           </button>
           <span className="badge b-pink" style={{ fontSize: 14, padding: '6px 12px' }}>{totalPicked} / {totalReq}</span>

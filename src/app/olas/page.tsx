@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  api, Icon, Wave, STATIONS, STATUS_BADGE, timeAgo, sum, useStoreParam,
-} from './_shared';
+import { api, Icon, Wave, STATIONS, STATUS_BADGE, timeAgo, sum } from './_shared';
 
 function progressOf(w: Wave): { done: number; total: number; label: string } {
   const totalUnits = sum(w.lines.map((l) => l.quantityRequired));
@@ -24,7 +22,6 @@ function routeFor(w: Wave): string {
 
 export default function OlasHome() {
   const router = useRouter();
-  const store = useStoreParam();
   const [station, setStation] = useState('mesa-1');
   const [waves, setWaves] = useState<Wave[] | null>(null);
   const [error, setError] = useState('');
@@ -33,16 +30,15 @@ export default function OlasHome() {
     let ignore = false;
     (async () => {
       try {
-        const data = await api<{ waves: Wave[] }>('/api/picking/waves', { store });
-        if (!ignore) setWaves(data.waves);
+        const data = await api<{ waves: Wave[] }>('/api/picking/waves');
+        if (!ignore) { setWaves(data.waves); setError(''); }
       } catch (e) {
         if (!ignore) setError((e as Error).message);
       }
     })();
     return () => { ignore = true; };
-  }, [store]);
+  }, []);
 
-  const q = store ? `?store=${store}` : '';
   const active = (waves || []).find(
     (w) => w.stationId === station && ['draft', 'picking', 'sorting'].includes(w.status)
   );
@@ -53,9 +49,10 @@ export default function OlasHome() {
   return (
     <div className="screen">
       <header className="head">
+        <button className="back" onClick={() => router.push('/gestion')}><Icon name="back" /></button>
         <div>
           <h3>Olas de picking</h3>
-          <div className="sub">Depósito · 2 mesas</div>
+          <div className="sub">Depósito central · 2 mesas</div>
         </div>
       </header>
 
@@ -75,17 +72,17 @@ export default function OlasHome() {
 
         {error && <div className="toast err">{error}</div>}
 
-        {!waves && <div className="spin" />}
+        {!waves && !error && <div className="spin" />}
 
         {waves && !active && (
           <div className="empty">
             <div className="ill"><Icon name="box" style={{ width: 38, height: 38 }} /></div>
             <h4>{STATIONS.find((s) => s.id === station)?.label} libre</h4>
-            <p>No hay ninguna ola en curso en esta mesa. Armá una nueva con los pedidos pendientes.</p>
+            <p>No hay ninguna ola en curso en esta mesa. Armá una nueva con los pedidos a preparar.</p>
             <button
               className="btn btn-primary btn-block btn-lg"
               style={{ marginTop: 4 }}
-              onClick={() => router.push(`/olas/nueva${q}${q ? '&' : '?'}mesa=${station}`)}
+              onClick={() => router.push(`/olas/nueva?mesa=${station}`)}
             >
               <Icon name="plus" /> Nueva ola
             </button>
@@ -119,7 +116,7 @@ export default function OlasHome() {
               <div style={{ padding: '14px 15px 15px' }}>
                 <button
                   className="btn btn-primary btn-block btn-lg"
-                  onClick={() => router.push(`/olas/${active.id}/${routeFor(active)}${q}`)}
+                  onClick={() => router.push(`/olas/${active.id}/${routeFor(active)}`)}
                 >
                   Continuar <Icon name="chevR" />
                 </button>
@@ -140,7 +137,7 @@ export default function OlasHome() {
                   <button
                     className="lrow between"
                     style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
-                    onClick={() => router.push(`/olas/${w.id}/listo${q}`)}
+                    onClick={() => router.push(`/olas/${w.id}/listo`)}
                   >
                     <div className="row gap10">
                       <span className="lcircle" style={{ background: 'var(--soft)', color: '#475569' }}>

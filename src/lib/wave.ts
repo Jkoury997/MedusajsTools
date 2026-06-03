@@ -1,14 +1,12 @@
 /**
- * Helpers del picking por olas (batch). Una ola agrupa hasta 8 pedidos de retiro
- * en tienda para recolectarlos juntos (consolidado por SKU) y clasificarlos
- * después en la mesa (put-to-wall). Convive con el flujo individual.
+ * Helpers del picking por olas (batch). Las olas se arman en el DEPÓSITO CENTRAL
+ * sobre el pool de pedidos a preparar (no están atadas a una tienda): se agrupan
+ * hasta 8 pedidos, se recolectan juntos (consolidado por SKU) y se clasifican
+ * en la mesa (put-to-wall). Convive con el flujo individual.
  */
 import { getPaidOrders } from './medusa';
-import { isStorePickup } from './shipping';
-import { HttpError } from './http';
-import type { Session } from './session';
 import type { EntityManager } from '@mikro-orm/postgresql';
-import { User, PickingWave } from './entities';
+import { PickingWave } from './entities';
 
 /** Mesas físicas de clasificación disponibles (put-to-wall). */
 export const STATIONS = ['mesa-1', 'mesa-2'] as const;
@@ -20,30 +18,6 @@ export const MAX_ORDERS_PER_WAVE = LETTERS.length;
 
 export function isValidStation(id: string): id is StationId {
   return (STATIONS as readonly string[]).includes(id);
-}
-
-/**
- * Resuelve qué tienda puede operar el actor. Mismas reglas que store-orders:
- * un no-admin solo su tienda; admin (o login admin) cualquiera vía query.
- */
-export async function resolveStoreId(
-  em: EntityManager,
-  session: Session,
-  requestedStoreId: string | null
-): Promise<string> {
-  const isAdmin = session.role === 'admin' || session.userId === 'admin';
-  if (isAdmin) {
-    if (!requestedStoreId) throw new HttpError(400, 'storeId es requerido');
-    return requestedStoreId;
-  }
-  const actor = await em.findOne(User, { id: session.userId });
-  const storeId = actor?.storeId;
-  if (!storeId) throw new HttpError(403, 'El usuario no tiene tienda asignada');
-  // Un no-admin no puede pedir otra tienda distinta a la suya.
-  if (requestedStoreId && requestedStoreId !== storeId) {
-    throw new HttpError(403, 'No autorizado para esa tienda');
-  }
-  return storeId;
 }
 
 /** Forma mínima de un ítem de pedido de Medusa que usamos para consolidar. */
@@ -65,24 +39,20 @@ export interface WaveOrderSource {
 }
 
 /**
- * Trae los pedidos de retiro en tienda en estado "para enviar" (fulfilled)
- * de una tienda, ordenados del más antiguo al más nuevo (prioridad de la ola).
+ * Trae los pedidos a PREPARAR del depósito central (fulfillment_status
+ * not_fulfilled / partially_fulfilled), de todas las tiendas, ordenados del más
+ * antiguo al más nuevo (prioridad de la ola). El fulfillment se crea al cerrar
+ * la ola, así que la ola se arma sobre pedidos todavía sin preparar.
  */
-export async function getPendingStorePickupOrders(storeId: string): Promise<WaveOrderSource[]> {
-  const fulfilled = await getPaidOrders(200, 0, 'enviar');
+export async function getPendingOrders(): Promise<WaveOrderSource[]> {
+  const preparar = await getPaidOrders(200, 0, 'preparar');
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const orders = fulfilled.orders.filter((order: any) => {
-    const method = order.shipping_methods?.[0];
-    if (!method || !isStorePickup(method.name)) return false;
-    const store = method.data?.store;
-    return store?.id === storeId;
-  });
+  const orders = (preparar.orders as any[]).filter((order) => (order.items?.length || 0) > 0);
 
   // Más antiguos primero = mayor prioridad.
   orders.sort(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
 
   return orders as WaveOrderSource[];
@@ -180,13 +150,9 @@ export function consolidate(orders: WaveOrderSource[]): {
   return { lines: [...lineMap.values()], breakdown };
 }
 
-/** Siguiente número correlativo de ola para una tienda. */
-export async function nextWaveNumber(em: EntityManager, storeId: string): Promise<number> {
-  const last = await em.findOne(
-    PickingWave,
-    { storeId },
-    { orderBy: { displayNumber: 'DESC' } }
-  );
+/** Siguiente número correlativo de ola (global, depósito central). */
+export async function nextWaveNumber(em: EntityManager): Promise<number> {
+  const last = await em.findOne(PickingWave, {}, { orderBy: { displayNumber: 'DESC' } });
   return (last?.displayNumber || 0) + 1;
 }
 

@@ -1044,6 +1044,12 @@ export default function GestionPage() {
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
             <Link
+              href="/olas"
+              className="px-2.5 py-1.5 text-xs font-semibold text-brand-700 bg-brand-100 hover:bg-brand-200 rounded-lg transition-colors"
+            >
+              Olas
+            </Link>
+            <Link
               href="/admin/auditoria"
               className="px-2.5 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
             >
