@@ -84,6 +84,9 @@ export default function Recoleccion() {
           <div className="sub">Juntá todo en una recorrida</div>
         </div>
         <div className="right">
+          <button className="back" onClick={() => router.push(`/olas/${id}/imprimir${q}`)} aria-label="imprimir">
+            <Icon name="print" />
+          </button>
           <span className="badge b-pink" style={{ fontSize: 14, padding: '6px 12px' }}>{totalPicked} / {totalReq}</span>
         </div>
       </header>
