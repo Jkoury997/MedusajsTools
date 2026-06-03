@@ -4,7 +4,7 @@
  * hasta 8 pedidos, se recolectan juntos (consolidado por SKU) y se clasifican
  * en la mesa (put-to-wall). Convive con el flujo individual.
  */
-import { getPaidOrders } from './medusa';
+import { getPaidOrders, getShippingOptionCodeMap } from './medusa';
 import { classifyShippingName, type ShippingCategory } from './shipping';
 import { config } from './config';
 import type { EntityManager } from '@mikro-orm/postgresql';
@@ -168,10 +168,23 @@ export function compareWavePriority(a: WaveOrderSource, b: WaveOrderSource): num
  * pedidos todavía sin preparar.
  */
 export async function getPendingOrders(): Promise<WaveOrderSource[]> {
-  const preparar = await getPaidOrders(200, 0, 'preparar');
+  const [preparar, codeMap] = await Promise.all([
+    getPaidOrders(200, 0, 'preparar'),
+    getShippingOptionCodeMap(),
+  ]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const orders = (preparar.orders as any[]).filter((order) => (order.items?.length || 0) > 0);
+
+  // Enriquecer cada pedido con el type.code de su shipping option (de un fetch
+  // aparte, cacheado), para que waveGroup lo use sin expandir la relación.
+  for (const order of orders) {
+    const method = order.shipping_methods?.[0];
+    const code = method?.shipping_option_id ? codeMap[method.shipping_option_id] : undefined;
+    if (method && code) {
+      method.shipping_option = { ...(method.shipping_option || {}), type: { code } };
+    }
+  }
 
   orders.sort(compareWavePriority);
 
