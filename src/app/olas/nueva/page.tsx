@@ -91,7 +91,7 @@ export default function NuevaOla() {
 
       <div className="body">
         <p className="muted" style={{ margin: 0, fontSize: 13.5 }}>
-          Te sugerimos esta ola con los pedidos más antiguos. Sacá o agregá los que quieras.
+          Te sugerimos esta ola por prioridad de envío (envío rápido, Mercado Libre, tienda…) y, dentro de cada grupo, los más antiguos. Sacá o agregá los que quieras.
         </p>
 
         <div className="seg">
@@ -118,9 +118,26 @@ export default function NuevaOla() {
             <div className="card pad0">
               {orders.map((o, idx) => {
                 const on = selected.has(o.orderId);
+                const newGroup = idx === 0 || orders[idx - 1].group !== o.group;
                 return (
                   <div key={o.orderId}>
-                    {idx > 0 && <div className="divide" />}
+                    {newGroup ? (
+                      <div
+                        style={{
+                          padding: '8px 14px',
+                          fontSize: 11,
+                          fontWeight: 800,
+                          letterSpacing: 0.4,
+                          textTransform: 'uppercase',
+                          color: 'var(--brand-600, #2563eb)',
+                          background: 'var(--soft, #f1f5f9)',
+                        }}
+                      >
+                        {o.groupLabel}
+                      </div>
+                    ) : (
+                      <div className="divide" />
+                    )}
                     <div className="lrow between" style={on ? undefined : { opacity: 0.55 }}>
                       <div className="row gap12">
                         <span className="lcircle" style={on ? undefined : { background: 'var(--soft)', color: '#94a3b8' }}>

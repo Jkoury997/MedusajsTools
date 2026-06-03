@@ -13,6 +13,7 @@ import {
 import {
   getPendingOrders,
   consolidate,
+  compareWavePriority,
   isValidStation,
   nextWaveNumber,
   serializeWave,
@@ -86,8 +87,8 @@ export async function POST(req: NextRequest) {
       if (!o) throw new HttpError(400, `El pedido ${id} no está disponible para preparar`);
       return o;
     });
-    // Ordenar por antigüedad (prioridad).
-    selected.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    // Ordenar por prioridad de grupo y, dentro del grupo, por antigüedad.
+    selected.sort(compareWavePriority);
 
     const { lines, breakdown } = consolidate(selected);
 
