@@ -1,22 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getEm } from '@/lib/db';
 import { requireSession } from '@/lib/session';
 import { errorResponse } from '@/lib/http';
-import {
-  resolveStoreId,
-  getPendingStorePickupOrders,
-  consolidate,
-  MAX_ORDERS_PER_WAVE,
-  LETTERS,
-} from '@/lib/wave';
+import { getPendingOrders, consolidate, MAX_ORDERS_PER_WAVE, LETTERS } from '@/lib/wave';
 
-// GET /api/picking/waves/suggest?storeId=&max=8
-// Propone una ola con los pedidos pendientes más antiguos de la tienda.
+// GET /api/picking/waves/suggest?max=8
+// Propone una ola con los pedidos a preparar más antiguos del depósito central.
 export async function GET(req: NextRequest) {
   try {
-    const session = await requireSession();
-    const em = await getEm();
-    const storeId = await resolveStoreId(em, session, req.nextUrl.searchParams.get('storeId'));
+    await requireSession();
 
     const maxParam = parseInt(req.nextUrl.searchParams.get('max') || '', 10);
     const max = Math.min(
@@ -24,11 +15,10 @@ export async function GET(req: NextRequest) {
       MAX_ORDERS_PER_WAVE
     );
 
-    const pending = await getPendingStorePickupOrders(storeId);
+    const pending = await getPendingOrders();
     const suggested = pending.slice(0, max);
     const { lines, breakdown } = consolidate(suggested);
 
-    // Asignar letra tentativa por orden de prioridad (antigüedad).
     const orders = breakdown.map((b, idx) => ({
       letter: LETTERS[idx],
       priority: idx,
@@ -40,7 +30,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      storeId,
       pendingCount: pending.length,
       suggestion: {
         orders,

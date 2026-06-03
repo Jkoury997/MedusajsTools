@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { api, Icon, ScanInput, Wave, sum, useStoreParam } from '../../_shared';
+import { api, Icon, ScanInput, Wave, sum } from '../../_shared';
 
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
@@ -17,7 +17,6 @@ interface Feedback {
 export default function Mesa() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
-  const store = useStoreParam();
   const [wave, setWave] = useState<Wave | null>(null);
   const [fb, setFb] = useState<Feedback | null>(null);
   const [error, setError] = useState('');
@@ -27,14 +26,14 @@ export default function Mesa() {
     let ignore = false;
     (async () => {
       try {
-        const data = await api<{ wave: Wave }>(`/api/picking/waves/${id}`, { store });
+        const data = await api<{ wave: Wave }>(`/api/picking/waves/${id}`);
         if (!ignore) setWave(data.wave);
       } catch (e) {
         if (!ignore) setError((e as Error).message);
       }
     })();
     return () => { ignore = true; };
-  }, [id, store]);
+  }, [id]);
 
   async function onScan(code: string) {
     try {
@@ -58,15 +57,13 @@ export default function Mesa() {
     setClosing(true);
     try {
       await api(`/api/picking/waves/${id}/sort/complete`, { method: 'POST' });
-      const q = store ? `?store=${store}` : '';
-      router.push(`/olas/${id}/listo${q}`);
+      router.push(`/olas/${id}/listo`);
     } catch (e) {
       setError((e as Error).message);
       setClosing(false);
     }
   }
 
-  const q = store ? `?store=${store}` : '';
   const byLetter = new Map((wave?.orders || []).map((o) => [o.letter, o]));
   const totalReq = wave ? sum(wave.orders.flatMap((o) => o.items.map((i) => i.quantityRequired))) : 0;
   const totalSorted = wave ? sum(wave.orders.flatMap((o) => o.items.map((i) => i.quantitySorted))) : 0;
@@ -74,7 +71,7 @@ export default function Mesa() {
   return (
     <div className="screen">
       <header className="head">
-        <button className="back" onClick={() => router.push(`/olas${q}`)}><Icon name="back" /></button>
+        <button className="back" onClick={() => router.push(`/olas`)}><Icon name="back" /></button>
         <div>
           <h3>Ola #{wave?.displayNumber ?? ''} · {wave ? wave.stationId.replace('mesa-', 'Mesa ') : ''}</h3>
           <div className="sub">Clasificación · {totalSorted} / {totalReq} ítems</div>

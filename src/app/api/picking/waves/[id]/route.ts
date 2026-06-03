@@ -4,19 +4,17 @@ import { requireSession } from '@/lib/session';
 import { errorResponse, HttpError } from '@/lib/http';
 import { audit } from '@/lib/audit';
 import { PickingWave } from '@/lib/entities';
-import { resolveStoreId, serializeWave } from '@/lib/wave';
+import { serializeWave } from '@/lib/wave';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-async function loadWaveForActor(req: NextRequest, id: string) {
+async function loadWaveForActor(_req: NextRequest, id: string) {
   const session = await requireSession();
   const em = await getEm();
   const wave = await em.findOne(PickingWave, { id }, { populate: ['orders.items', 'lines'] });
   if (!wave) throw new HttpError(404, 'Ola no encontrada');
-  // Reusar las reglas de tienda: valida que el actor pueda ver esta tienda.
-  await resolveStoreId(em, session, wave.storeId);
   return { em, session, wave };
 }
 

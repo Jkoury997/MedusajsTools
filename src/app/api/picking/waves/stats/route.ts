@@ -2,15 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEm } from '@/lib/db';
 import { requireSession } from '@/lib/session';
 import { errorResponse } from '@/lib/http';
-import { resolveStoreId } from '@/lib/wave';
 import { PickingWave } from '@/lib/entities';
 
-// GET /api/picking/waves/stats?storeId=&from=&to= - Métricas de olas (Fase 5)
+// GET /api/picking/waves/stats?from=&to= - Métricas de olas del depósito (Fase 5)
 export async function GET(req: NextRequest) {
   try {
-    const session = await requireSession();
+    await requireSession();
     const em = await getEm();
-    const storeId = await resolveStoreId(em, session, req.nextUrl.searchParams.get('storeId'));
 
     const from = req.nextUrl.searchParams.get('from');
     const to = req.nextUrl.searchParams.get('to');
@@ -25,7 +23,7 @@ export async function GET(req: NextRequest) {
 
     const waves = await em.find(
       PickingWave,
-      { storeId, createdAt },
+      { createdAt },
       { populate: ['orders.items', 'lines'] }
     );
 
@@ -58,7 +56,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      storeId,
       totals: {
         waves: waves.length,
         completed: completed.length,

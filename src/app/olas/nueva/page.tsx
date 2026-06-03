@@ -3,14 +3,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  api, Icon, STATIONS, SuggestOrder, SuggestLine, Wave, timeAgo, sum, useStoreParam,
+  api, Icon, STATIONS, SuggestOrder, SuggestLine, Wave, timeAgo, sum,
 } from '../_shared';
 
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
 export default function NuevaOla() {
   const router = useRouter();
-  const store = useStoreParam();
   const [station, setStation] = useState('mesa-1');
   const [orders, setOrders] = useState<SuggestOrder[]>([]);
   const [lines, setLines] = useState<SuggestLine[]>([]);
@@ -30,7 +29,7 @@ export default function NuevaOla() {
     setLoading(true);
     try {
       const data = await api<{ suggestion: { orders: SuggestOrder[]; lines: SuggestLine[] } }>(
-        '/api/picking/waves/suggest', { store }
+        '/api/picking/waves/suggest'
       );
       setOrders(data.suggestion.orders);
       setLines(data.suggestion.lines);
@@ -40,7 +39,7 @@ export default function NuevaOla() {
     } finally {
       setLoading(false);
     }
-  }, [store]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -67,10 +66,9 @@ export default function NuevaOla() {
       const orderIds = orders.filter((o) => selected.has(o.orderId)).map((o) => o.orderId);
       const data = await api<{ wave: Wave }>('/api/picking/waves', {
         method: 'POST',
-        body: { orderIds, stationId: station, storeId: store || undefined },
+        body: { orderIds, stationId: station },
       });
-      const q = store ? `?store=${store}` : '';
-      router.push(`/olas/${data.wave.id}/recoleccion${q}`);
+      router.push(`/olas/${data.wave.id}/recoleccion`);
     } catch (e) {
       const msg = (e as Error).message;
       // Mesa ocupada → overlay
@@ -84,12 +82,10 @@ export default function NuevaOla() {
     }
   }
 
-  const q = store ? `?store=${store}` : '';
-
   return (
     <div className="screen">
       <header className="head">
-        <button className="back" onClick={() => router.push(`/olas${q}`)}><Icon name="back" /></button>
+        <button className="back" onClick={() => router.push(`/olas`)}><Icon name="back" /></button>
         <div><h3>Nueva ola</h3></div>
       </header>
 
@@ -113,7 +109,7 @@ export default function NuevaOla() {
           <div className="empty">
             <div className="ill"><Icon name="box" style={{ width: 38, height: 38 }} /></div>
             <h4>No hay pedidos pendientes</h4>
-            <p>No quedan pedidos de retiro para armar una ola en esta tienda.</p>
+            <p>No quedan pedidos a preparar para armar una ola.</p>
           </div>
         )}
 
@@ -194,7 +190,7 @@ export default function NuevaOla() {
               <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => { setStation(station === 'mesa-1' ? 'mesa-2' : 'mesa-1'); setBusy(null); }}>
                 Usar otra mesa
               </button>
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => router.push(`/olas${q}`)}>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => router.push(`/olas`)}>
                 Ir a las olas
               </button>
             </div>

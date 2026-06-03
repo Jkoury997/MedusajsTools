@@ -11,8 +11,7 @@ import {
   PickingWaveLine,
 } from '@/lib/entities';
 import {
-  resolveStoreId,
-  getPendingStorePickupOrders,
+  getPendingOrders,
   consolidate,
   isValidStation,
   nextWaveNumber,
@@ -21,15 +20,13 @@ import {
   MAX_ORDERS_PER_WAVE,
 } from '@/lib/wave';
 
-// GET /api/picking/waves?storeId=&stationId= - Olas activas (no completadas/canceladas)
+// GET /api/picking/waves?stationId= - Olas activas del depósito (no cerradas)
 export async function GET(req: NextRequest) {
   try {
-    const session = await requireSession();
+    await requireSession();
     const em = await getEm();
-    const storeId = await resolveStoreId(em, session, req.nextUrl.searchParams.get('storeId'));
 
     const where: Record<string, unknown> = {
-      storeId,
       status: { $in: ['draft', 'picking', 'sorting', 'ready'] },
     };
     const stationId = req.nextUrl.searchParams.get('stationId');
@@ -50,16 +47,14 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/picking/waves - Crear una ola confirmada
-// Body: { storeId?, orderIds: string[], stationId }
+// POST /api/picking/waves - Crear una ola confirmada (depósito central)
+// Body: { orderIds: string[], stationId }
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
     const em = await getEm();
     const body = await req.json();
     const { orderIds, stationId } = body as { orderIds?: string[]; stationId?: string };
-
-    const storeId = await resolveStoreId(em, session, body.storeId ?? null);
 
     if (!stationId || !isValidStation(stationId)) {
       throw new HttpError(400, 'stationId inválido (esperado: mesa-1 | mesa-2)');
@@ -83,12 +78,12 @@ export async function POST(req: NextRequest) {
       throw new HttpError(409, `La ${stationId} ya tiene una ola en curso (#${busy.displayNumber})`);
     }
 
-    // Validar que los pedidos sean pendientes de retiro de esta tienda.
-    const pending = await getPendingStorePickupOrders(storeId);
+    // Validar que los pedidos estén en el pool a preparar.
+    const pending = await getPendingOrders();
     const pendingById = new Map(pending.map((o) => [o.id, o]));
     const selected = orderIds.map((id) => {
       const o = pendingById.get(id);
-      if (!o) throw new HttpError(400, `El pedido ${id} no está disponible para esta tienda`);
+      if (!o) throw new HttpError(400, `El pedido ${id} no está disponible para preparar`);
       return o;
     });
     // Ordenar por antigüedad (prioridad).
@@ -97,15 +92,15 @@ export async function POST(req: NextRequest) {
     const { lines, breakdown } = consolidate(selected);
 
     const actor = session.userId === 'admin' ? null : await em.findOne(User, { id: session.userId });
-    const displayNumber = await nextWaveNumber(em, storeId);
+    const displayNumber = await nextWaveNumber(em);
 
     const wave = em.create(PickingWave, {
       displayNumber,
-      storeId,
+      storeId: '',
       stationId,
       status: 'draft',
       createdByUserId: actor?.id,
-      createdByName: actor?.name || 'admin',
+      createdByName: actor?.name || 'Depósito',
     });
 
     breakdown.forEach((b, idx) => {
@@ -147,7 +142,7 @@ export async function POST(req: NextRequest) {
       userName: wave.createdByName,
       userId: actor?.id,
       details: `Ola #${displayNumber} en ${stationId}: ${selected.length} pedidos, ${lines.length} SKUs`,
-      metadata: { waveId: wave.id, storeId, stationId, orderIds, displayNumber },
+      metadata: { waveId: wave.id, stationId, orderIds, displayNumber },
     });
 
     await wave.orders.init({ populate: ['items'] as never });

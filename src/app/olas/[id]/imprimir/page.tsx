@@ -3,7 +3,7 @@
 import './imprimir.css';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { api, Icon, Wave, sum, useStoreParam } from '../../_shared';
+import { api, Icon, Wave, sum } from '../../_shared';
 
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 type Doc = 'recoleccion' | 'mesa';
@@ -11,7 +11,6 @@ type Doc = 'recoleccion' | 'mesa';
 export default function Imprimir() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
-  const store = useStoreParam();
   const [wave, setWave] = useState<Wave | null>(null);
   const [error, setError] = useState('');
   const [doc, setDoc] = useState<Doc>('recoleccion');
@@ -20,16 +19,15 @@ export default function Imprimir() {
     let ignore = false;
     (async () => {
       try {
-        const data = await api<{ wave: Wave }>(`/api/picking/waves/${id}`, { store });
+        const data = await api<{ wave: Wave }>(`/api/picking/waves/${id}`);
         if (!ignore) setWave(data.wave);
       } catch (e) {
         if (!ignore) setError((e as Error).message);
       }
     })();
     return () => { ignore = true; };
-  }, [id, store]);
+  }, [id]);
 
-  const q = store ? `?store=${store}` : '';
   const mesaLabel = wave ? wave.stationId.replace('mesa-', 'Mesa ') : '';
   const lines = wave ? [...wave.lines].sort((a, b) => b.quantityRequired - a.quantityRequired) : [];
   const orders = wave ? [...wave.orders].sort((a, b) => a.priority - b.priority) : [];
@@ -39,7 +37,7 @@ export default function Imprimir() {
   return (
     <div className="olas-print">
       <div className="toolbar">
-        <button className="back" onClick={() => router.push(`/olas/${id}/recoleccion${q}`)}><Icon name="back" /></button>
+        <button className="back" onClick={() => router.push(`/olas/${id}/recoleccion`)}><Icon name="back" /></button>
         <div className="seg">
           <button data-active={doc === 'recoleccion'} onClick={() => setDoc('recoleccion')}>Hoja de recolección</button>
           <button data-active={doc === 'mesa'} onClick={() => setDoc('mesa')}>Etiquetas de mesa</button>
