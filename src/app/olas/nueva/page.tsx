@@ -118,33 +118,32 @@ export default function NuevaOla() {
             <div className="card pad0">
               {orders.map((o, idx) => {
                 const on = selected.has(o.orderId);
-                const newGroup = idx === 0 || orders[idx - 1].group !== o.group;
                 return (
                   <div key={o.orderId}>
-                    {newGroup ? (
-                      <div
-                        style={{
-                          padding: '8px 14px',
-                          fontSize: 11,
-                          fontWeight: 800,
-                          letterSpacing: 0.4,
-                          textTransform: 'uppercase',
-                          color: 'var(--brand-600, #2563eb)',
-                          background: 'var(--soft, #f1f5f9)',
-                        }}
-                      >
-                        {o.groupLabel}
-                      </div>
-                    ) : (
-                      <div className="divide" />
-                    )}
+                    {idx > 0 && <div className="divide" />}
                     <div className="lrow between" style={on ? undefined : { opacity: 0.55 }}>
                       <div className="row gap12">
                         <span className="lcircle" style={on ? undefined : { background: 'var(--soft)', color: '#94a3b8' }}>
                           {on ? letterOf.get(o.orderId) : '—'}
                         </span>
                         <div>
-                          <div className="ttl">#{o.orderDisplayId}</div>
+                          <div className="ttl" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            #{o.orderDisplayId}
+                            <span
+                              style={{
+                                fontSize: 10.5,
+                                fontWeight: 700,
+                                letterSpacing: 0.2,
+                                textTransform: 'uppercase',
+                                color: 'var(--brand-600, #2563eb)',
+                                background: 'var(--soft, #f1f5f9)',
+                                padding: '2px 7px',
+                                borderRadius: 999,
+                              }}
+                            >
+                              {o.groupLabel}
+                            </span>
+                          </div>
                           <div className="muted" style={{ fontSize: 12 }}>{timeAgo(o.createdAt)} · {o.itemCount} ítems</div>
                         </div>
                       </div>
