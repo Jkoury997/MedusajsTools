@@ -14,7 +14,7 @@ export default function NuevaOla() {
   const [orders, setOrders] = useState<SuggestOrder[]>([]);
   const [lines, setLines] = useState<SuggestLine[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [openConsolidado, setOpenConsolidado] = useState(true);
+  const [openConsolidado, setOpenConsolidado] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<{ displayNumber: number; id: string } | null>(null);
