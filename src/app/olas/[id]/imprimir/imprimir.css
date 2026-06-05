@@ -69,9 +69,16 @@
 .olas-print .doc[data-show="true"] { display: flex; }
 
 @media print {
+  /* Neutralizar el shell de la app (root layout: <main class="max-w-lg ...">,
+   * body bg-gray-100) para que la hoja ocupe el A4 completo y no quede encajada
+   * en el contenedor angosto del mobile. */
+  html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+  body main { max-width: none !important; width: auto !important; margin: 0 !important; padding: 0 !important; }
+
   .olas-print { background: #fff; padding: 0; }
   .olas-print .toolbar, .olas-print .doc-cap { display: none !important; }
   .olas-print .stage { padding: 0; gap: 0; }
-  .olas-print .sheet { box-shadow: none; }
+  .olas-print .doc, .olas-print .doc[data-show="true"] { gap: 0; }
+  .olas-print .sheet { box-shadow: none; width: 210mm; margin: 0 auto; }
   @page { size: A4; margin: 0; }
 }
