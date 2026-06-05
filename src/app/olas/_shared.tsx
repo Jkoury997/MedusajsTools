@@ -11,6 +11,12 @@ export interface WaveLine {
   sku?: string;
   barcode?: string;
   title?: string;
+  /** Talle (variant.metadata.size) — enriquecido al leer la ola. */
+  size?: string;
+  /** Color (variant.metadata.color) — enriquecido al leer la ola. */
+  color?: string;
+  /** external_id del producto (código) — enriquecido al leer la ola. */
+  externalId?: string;
   quantityRequired: number;
   quantityPicked: number;
   quantityShort: number;
@@ -137,6 +143,7 @@ export function Icon({ name, style }: { name: string; style?: React.CSSPropertie
     box: <><path d="M21 8 12 3 3 8l9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8" /><path d="M12 13v8" /></>,
     info: <><path d="M12 16v-4M12 8h.01" /><circle cx="12" cy="12" r="9" /></>,
     print: <><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></>,
+    hand: <><path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2" /><path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v2" /><path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8" /><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" /></>,
   };
   return (
     <svg className="i" viewBox="0 0 24 24" style={style} aria-hidden>

@@ -15,6 +15,7 @@ export default function Recoleccion() {
   const [lastKey, setLastKey] = useState('');
   const [confirmMissing, setConfirmMissing] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [manual, setManual] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -43,6 +44,24 @@ export default function Recoleccion() {
         setLastKey(line.id);
         show('ok', `+1 ${line.title || line.sku} (${line.quantityPicked}/${line.quantityRequired})`);
       }
+    } catch (e) {
+      show('err', (e as Error).message);
+    }
+  }
+
+  // Suma manual de 1 unidad de una línea (para productos sin barcode escaneable).
+  // Reusa la ruta de pick, que acepta variantId/sku/barcode.
+  async function manualAdd(l: WaveLine) {
+    if (l.quantityPicked >= l.quantityRequired) return;
+    try {
+      const data = await api<{ wave: Wave }>(`/api/picking/waves/${id}/pick`, {
+        method: 'POST',
+        body: { variantId: l.variantId, sku: l.sku, barcode: l.barcode },
+      });
+      setWave(data.wave);
+      const line = data.wave.lines.find((x) => x.id === l.id);
+      setLastKey(l.id);
+      show('ok', `+1 ${l.title || l.sku} (${line?.quantityPicked ?? l.quantityPicked + 1}/${l.quantityRequired})`);
     } catch (e) {
       show('err', (e as Error).message);
     }
@@ -81,6 +100,15 @@ export default function Recoleccion() {
           <div className="sub">Juntá todo en una recorrida</div>
         </div>
         <div className="right">
+          <button
+            className="back"
+            onClick={() => setManual((v) => !v)}
+            aria-label="modo manual"
+            title={manual ? 'Modo manual activo' : 'Activar modo manual'}
+            style={manual ? { background: 'var(--pink)', color: '#fff' } : undefined}
+          >
+            <Icon name="hand" />
+          </button>
           <button className="back" onClick={() => router.push(`/olas/${id}/imprimir`)} aria-label="imprimir">
             <Icon name="print" />
           </button>
@@ -123,16 +151,45 @@ export default function Recoleccion() {
                         >
                           <Icon name={done ? 'check' : 'box'} />
                         </span>
-                        <div style={{ flex: 1 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
                           <div className="ttl" style={{ fontSize: 14 }}>{l.title || 'Producto'}</div>
-                          <div className="mono">{l.sku || l.barcode || '—'}</div>
+                          <div className="mono">{l.externalId || l.sku || l.barcode || '—'}</div>
+                          {(l.size || l.color) && (
+                            <div className="row gap6" style={{ marginTop: 4 }}>
+                              {l.size && (
+                                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: 'var(--soft, #f1f5f9)', color: '#334155' }}>
+                                  Talle {l.size}
+                                </span>
+                              )}
+                              {l.color && (
+                                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: 'var(--soft, #f1f5f9)', color: '#334155' }}>
+                                  {l.color}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                         {done ? (
                           <span className="badge b-ok">Listo</span>
                         ) : (
-                          <span className="count" style={isLast ? { color: 'var(--pink-fg)' } : { color: 'var(--muted)' }}>
-                            {l.quantityPicked}<span className="tot">/{l.quantityRequired}</span>
-                          </span>
+                          <div className="row gap8" style={{ alignItems: 'center' }}>
+                            <span className="count" style={isLast ? { color: 'var(--pink-fg)' } : { color: 'var(--muted)' }}>
+                              {l.quantityPicked}<span className="tot">/{l.quantityRequired}</span>
+                            </span>
+                            {(manual || !l.barcode) && (
+                              <button
+                                onClick={() => manualAdd(l)}
+                                aria-label="sumar uno"
+                                style={{
+                                  width: 38, height: 38, flex: 'none', borderRadius: 11, border: 'none',
+                                  background: 'var(--pink)', color: '#fff', fontSize: 22, fontWeight: 700,
+                                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                }}
+                              >
+                                +
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>

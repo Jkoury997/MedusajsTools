@@ -4,7 +4,7 @@
  * hasta 8 pedidos, se recolectan juntos (consolidado por SKU) y se clasifican
  * en la mesa (put-to-wall). Convive con el flujo individual.
  */
-import { getPaidOrders, getShippingOptionCodeMap } from './medusa';
+import { getPaidOrders, getShippingOptionCodeMap, getVariantDetails } from './medusa';
 import { classifyShippingName, type ShippingCategory } from './shipping';
 import { config } from './config';
 import type { EntityManager } from '@mikro-orm/postgresql';
@@ -339,5 +339,29 @@ export function serializeWave(wave: any) {
       quantityShort: l.quantityShort,
     })),
   };
+}
+
+/**
+ * Enriquece las líneas consolidadas de una ola serializada con talle, color y
+ * external_id (código del producto), traídos de Medusa por variantId. Sirve
+ * para identificar artículos sin barcode en la recolección (scan + manual).
+ * Es defensivo: si Medusa falla, devuelve la ola tal cual.
+ */
+export async function attachLineDetails(serialized: any): Promise<any> {
+  const lines: any[] = serialized.lines || [];
+  const variantIds = lines.map((l) => l.variantId).filter((v): v is string => !!v);
+  if (variantIds.length === 0) return serialized;
+  const details = await getVariantDetails(variantIds);
+  serialized.lines = lines.map((l) => {
+    const d = l.variantId ? details[l.variantId] : undefined;
+    return {
+      ...l,
+      sku: l.sku || d?.sku,
+      size: d?.size,
+      color: d?.color,
+      externalId: d?.externalId,
+    };
+  });
+  return serialized;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

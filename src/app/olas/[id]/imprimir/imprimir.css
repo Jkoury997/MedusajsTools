@@ -42,6 +42,7 @@
 .olas-print table.items tbody td { padding: 11px 8px; border-bottom: 1px solid var(--soft); font-size: 13px; vertical-align: middle; }
 .olas-print table.items .c-idx { width: 28px; color: var(--muted); font-weight: 700; }
 .olas-print table.items .c-name { font-weight: 700; }
+.olas-print table.items .c-name .c-attrs { display: block; font-weight: 600; font-size: 11px; color: var(--muted); margin-top: 2px; }
 .olas-print table.items .c-sku { font-family: ui-monospace, monospace; font-size: 11.5px; color: #374151; }
 .olas-print table.items .c-qty { text-align: center; font-weight: 800; font-size: 15px; width: 52px; }
 .olas-print table.items .c-check { width: 44px; text-align: center; }
@@ -69,9 +70,16 @@
 .olas-print .doc[data-show="true"] { display: flex; }
 
 @media print {
+  /* Neutralizar el shell de la app (root layout: <main class="max-w-lg ...">,
+   * body bg-gray-100) para que la hoja ocupe el A4 completo y no quede encajada
+   * en el contenedor angosto del mobile. */
+  html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+  body main { max-width: none !important; width: auto !important; margin: 0 !important; padding: 0 !important; }
+
   .olas-print { background: #fff; padding: 0; }
   .olas-print .toolbar, .olas-print .doc-cap { display: none !important; }
   .olas-print .stage { padding: 0; gap: 0; }
-  .olas-print .sheet { box-shadow: none; }
+  .olas-print .doc, .olas-print .doc[data-show="true"] { gap: 0; }
+  .olas-print .sheet { box-shadow: none; width: 210mm; margin: 0 auto; }
   @page { size: A4; margin: 0; }
 }

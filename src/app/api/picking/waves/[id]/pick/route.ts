@@ -5,7 +5,7 @@ import { requireSession } from '@/lib/session';
 import { errorResponse, HttpError } from '@/lib/http';
 import { audit } from '@/lib/audit';
 import { PickingWave } from '@/lib/entities';
-import { serializeWave } from '@/lib/wave';
+import { serializeWave, attachLineDetails } from '@/lib/wave';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -73,7 +73,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       return serializeWave(wave);
     });
 
-    return NextResponse.json({ success: true, wave: result });
+    const detailed = await attachLineDetails(result);
+    return NextResponse.json({ success: true, wave: detailed });
   } catch (error) {
     return errorResponse(error);
   }
