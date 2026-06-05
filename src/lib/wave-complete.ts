@@ -9,6 +9,7 @@ import type { EntityManager } from '@mikro-orm/postgresql';
 import { PickingSession, PickingItem, User } from './entities';
 import { audit } from './audit';
 import { medusaRequest } from './medusa';
+import { createFulfillmentForOrder } from './fulfillment';
 
 export interface FinalizeResult {
   orderId: string;
@@ -22,7 +23,7 @@ export interface FinalizeResult {
 
 /**
  * Crea el fulfillment en Medusa con las cantidades realmente clasificadas.
- * Reintenta una vez creando reservas si la orden no tenía (ML/ERP).
+ * El reintento ante falta de reserva (ML/ERP) vive en createFulfillmentForOrder.
  */
 async function createFulfillmentInMedusa(
   orderId: string,
@@ -35,29 +36,9 @@ async function createFulfillmentInMedusa(
   const order = orderData.order;
   const fulfillmentItems = order.items
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .map((item: any) => ({ id: item.id, quantity: pickedByLineItem.get(item.id) || 0 }))
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .filter((item: any) => item.quantity > 0);
+    .map((item: any) => ({ id: item.id, quantity: pickedByLineItem.get(item.id) || 0 }));
 
-  if (fulfillmentItems.length === 0) return;
-
-  const createFulfillment = () =>
-    medusaRequest(`/admin/orders/${orderId}/fulfillments`, {
-      method: 'POST',
-      body: { items: fulfillmentItems },
-    });
-
-  try {
-    await createFulfillment();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes('No stock reservation found')) {
-      await medusaRequest(`/admin/orders/${orderId}/reserve-inventory`, { method: 'POST' });
-      await createFulfillment();
-    } else {
-      throw err;
-    }
-  }
+  await createFulfillmentForOrder(orderId, fulfillmentItems);
 }
 
 /**
