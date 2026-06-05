@@ -287,7 +287,8 @@ export function consolidate(orders: WaveOrderSource[]): {
 
 /** Siguiente número correlativo de ola (global, depósito central). */
 export async function nextWaveNumber(em: EntityManager): Promise<number> {
-  const last = await em.findOne(PickingWave, {}, { orderBy: { displayNumber: 'DESC' } });
+  // find (no findOne) porque MikroORM prohíbe findOne con where vacío.
+  const [last] = await em.find(PickingWave, {}, { orderBy: { displayNumber: 'DESC' }, limit: 1 });
   return (last?.displayNumber || 0) + 1;
 }
 
