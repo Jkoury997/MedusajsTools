@@ -33,7 +33,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const user =
       (actorId ? await em.findOne(User, { id: actorId }) : null) ||
       (await em.findOne(User, { role: 'admin' })) ||
-      (await em.findOne(User, {}));
+      // find (no findOne) porque MikroORM prohíbe findOne con where vacío.
+      (await em.find(User, {}, { limit: 1 }))[0];
     if (!user) {
       throw new HttpError(400, 'No hay ningún usuario en el sistema para registrar el cierre');
     }
