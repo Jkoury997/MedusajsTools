@@ -221,6 +221,7 @@ export interface ConsolidatedLine {
 }
 
 export interface PerOrderItem {
+  key: string;
   lineItemId: string;
   variantId?: string;
   sku?: string;
@@ -257,6 +258,7 @@ export function consolidate(orders: WaveOrderSource[]): {
       const title = itemTitle(item);
 
       perOrder.push({
+        key,
         lineItemId: item.id,
         variantId,
         sku,

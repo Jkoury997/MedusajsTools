@@ -49,6 +49,15 @@ export interface Wave {
   lines: WaveLine[];
 }
 
+export interface SuggestOrderItem {
+  key: string;
+  lineItemId: string;
+  variantId?: string;
+  sku?: string;
+  barcode?: string;
+  title: string;
+  quantityRequired: number;
+}
 export interface SuggestOrder {
   letter: string;
   priority: number;
@@ -58,6 +67,7 @@ export interface SuggestOrder {
   itemCount: number;
   group: string;
   groupLabel: string;
+  items: SuggestOrderItem[];
 }
 export interface SuggestLine {
   key: string;

@@ -39,6 +39,9 @@ export async function GET(req: NextRequest) {
         itemCount: b.items.reduce((s, i) => s + i.quantityRequired, 0),
         group,
         groupLabel: waveGroupLabel(group),
+        // Ítems del pedido (con su key de consolidación) para que el cliente
+        // recalcule el consolidado al des/seleccionar pedidos.
+        items: b.items,
       };
     });
 

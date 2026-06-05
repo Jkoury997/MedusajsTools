@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   api, Icon, STATIONS, SuggestOrder, SuggestLine, Wave, timeAgo, sum,
@@ -12,7 +12,6 @@ export default function NuevaOla() {
   const router = useRouter();
   const [station, setStation] = useState('mesa-1');
   const [orders, setOrders] = useState<SuggestOrder[]>([]);
-  const [lines, setLines] = useState<SuggestLine[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [openConsolidado, setOpenConsolidado] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -32,7 +31,6 @@ export default function NuevaOla() {
         '/api/picking/waves/suggest'
       );
       setOrders(data.suggestion.orders);
-      setLines(data.suggestion.lines);
       setSelected(new Set(data.suggestion.orders.map((o) => o.orderId)));
     } catch (e) {
       setError((e as Error).message);
@@ -46,8 +44,21 @@ export default function NuevaOla() {
   // Letras reasignadas según la selección (por prioridad/antigüedad).
   const chosen = orders.filter((o) => selected.has(o.orderId));
   const letterOf = new Map(chosen.map((o, i) => [o.orderId, LETTERS[i]]));
-  // El consolidado de la sugerencia es del set propuesto; al confirmar, el backend
-  // recalcula el consolidado real de los pedidos seleccionados.
+  // Consolidado recalculado en vivo según los pedidos seleccionados: al des/
+  // seleccionar, la cantidad de artículos a escanear se actualiza al instante.
+  // El backend vuelve a consolidar al confirmar (fuente de verdad).
+  const lines = useMemo<SuggestLine[]>(() => {
+    const map = new Map<string, SuggestLine>();
+    for (const o of orders) {
+      if (!selected.has(o.orderId)) continue;
+      for (const it of o.items) {
+        const ex = map.get(it.key);
+        if (ex) ex.quantityRequired += it.quantityRequired;
+        else map.set(it.key, { key: it.key, sku: it.sku, barcode: it.barcode, title: it.title, quantityRequired: it.quantityRequired });
+      }
+    }
+    return [...map.values()].sort((a, b) => b.quantityRequired - a.quantityRequired);
+  }, [orders, selected]);
   const totalUnits = sum(lines.map((l) => l.quantityRequired));
 
   function toggle(orderId: string) {
