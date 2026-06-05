@@ -152,8 +152,8 @@ export default function Recoleccion() {
                           <Icon name={done ? 'check' : 'box'} />
                         </span>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div className="ttl" style={{ fontSize: 14 }}>{l.title || 'Producto'}</div>
-                          <div className="mono">{l.externalId || l.sku || l.barcode || '—'}</div>
+                          <div className="ttl" style={{ fontSize: 15, fontFamily: 'ui-monospace, monospace' }}>{l.externalId || l.sku || l.barcode || '—'}</div>
+                          <div style={{ fontSize: 12.5, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.title || 'Producto'}</div>
                           {(l.size || l.color) && (
                             <div className="row gap6" style={{ marginTop: 4 }}>
                               {l.size && (
