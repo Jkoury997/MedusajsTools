@@ -74,8 +74,13 @@ export default function Imprimir() {
                     {lines.map((l, i) => (
                       <tr key={l.id}>
                         <td className="c-idx">{i + 1}</td>
-                        <td className="c-name">{l.title || 'Producto'}</td>
-                        <td className="c-sku">{l.sku || l.barcode || '—'}</td>
+                        <td className="c-name">
+                          {l.title || 'Producto'}
+                          {(l.size || l.color) && (
+                            <span className="c-attrs">{[l.size && `Talle ${l.size}`, l.color].filter(Boolean).join(' · ')}</span>
+                          )}
+                        </td>
+                        <td className="c-sku">{l.externalId || l.sku || l.barcode || '—'}</td>
                         <td className="c-qty">{l.quantityRequired}</td>
                         <td className="c-check"><span className="box" /></td>
                       </tr>

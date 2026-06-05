@@ -249,6 +249,53 @@ export async function getShippingOptionCodeMap(): Promise<Record<string, string>
   }
 }
 
+/** Detalle de una variante para mostrar en la recolección. */
+export interface VariantDetail {
+  sku?: string;
+  size?: string;
+  color?: string;
+  /** external_id del PRODUCTO (el "código" con el que se identifica el artículo). */
+  externalId?: string;
+}
+
+// Caché por variante (no expira en la vida del proceso: los atributos de una
+// variante no cambian). Evita refetchear los mismos variantId entre olas.
+const variantDetailCache = new Map<string, VariantDetail>();
+
+/**
+ * Devuelve { variantId: { sku, size, color, externalId } } para los variantId
+ * dados, trayendo de Medusa solo los que falten (cacheados). Es DEFENSIVO: ante
+ * cualquier error devuelve lo que tenga (nunca lanza), así no rompe la lectura
+ * de la ola si Medusa falla.
+ */
+export async function getVariantDetails(variantIds: string[]): Promise<Record<string, VariantDetail>> {
+  const missing = [...new Set(variantIds.filter((id) => id && !variantDetailCache.has(id)))];
+  if (missing.length > 0) {
+    try {
+      const idParams = missing.map((id) => `id[]=${encodeURIComponent(id)}`).join('&');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = await medusaRequest<{ variants: any[] }>(
+        `/admin/product-variants?${idParams}&fields=id,sku,metadata,product.external_id&limit=${missing.length}`,
+      );
+      for (const v of data.variants || []) {
+        variantDetailCache.set(v.id, {
+          sku: v.sku,
+          size: v.metadata?.size,
+          color: v.metadata?.color,
+          externalId: v.product?.external_id,
+        });
+      }
+      // Cachear los que no volvieron como vacíos, para no refetchearlos.
+      for (const id of missing) if (!variantDetailCache.has(id)) variantDetailCache.set(id, {});
+    } catch (e) {
+      console.error('[getVariantDetails] Error:', e);
+    }
+  }
+  const out: Record<string, VariantDetail> = {};
+  for (const id of variantIds) if (id) out[id] = variantDetailCache.get(id) || {};
+  return out;
+}
+
 // Detectar si un pedido tiene pago en efectivo
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function isCashPayment(order: any): boolean {
