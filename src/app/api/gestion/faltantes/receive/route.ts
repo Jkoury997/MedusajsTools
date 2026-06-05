@@ -3,6 +3,7 @@ import { getEm } from '@/lib/db';
 import { PickingSession } from '@/lib/entities';
 import { audit } from '@/lib/audit';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
+import { createFulfillmentForOrder } from '@/lib/fulfillment';
 import { requireRole } from '@/lib/session';
 import { errorResponse } from '@/lib/http';
 import { LockMode } from '@mikro-orm/core';
@@ -144,10 +145,7 @@ export async function POST(req: NextRequest) {
             }
 
             if (fulfillmentItems.length > 0) {
-              await medusaRequest(`/admin/orders/${orderId}/fulfillments`, {
-                method: 'POST',
-                body: { items: fulfillmentItems },
-              });
+              await createFulfillmentForOrder(orderId, fulfillmentItems);
               fulfillmentCreated = true;
               session.fulfillmentStatus = 'created';
               invalidateOrdersCache();

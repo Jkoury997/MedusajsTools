@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEm } from '@/lib/db';
 import { PickingSession } from '@/lib/entities';
 import { audit } from '@/lib/audit';
-import { medusaRequest } from '@/lib/medusa';
+import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
+import { createFulfillmentForOrder } from '@/lib/fulfillment';
 import { requireRole } from '@/lib/session';
 import { errorResponse } from '@/lib/http';
 import { randomBytes } from 'crypto';
@@ -39,8 +40,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Obtener sesión
-    const session = await em.findOne(PickingSession, { orderId, status: 'completed' });
+    // Obtener sesión (con items para poder armar el fulfillment con lo pickeado)
+    const session = await em.findOne(
+      PickingSession,
+      { orderId, status: 'completed' },
+      { populate: ['items'] }
+    );
     if (!session) {
       return NextResponse.json(
         { success: false, error: 'Sesión no encontrada' },
@@ -48,8 +53,38 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Idempotencia: si ya hay un voucher resuelto, devolver el existente sin crear otra promoción
+    // Crea el fulfillment en Medusa SOLO con lo que se pickeó (los faltantes se
+    // compensan con el voucher, no se van a enviar). Cierra el cumplimiento para
+    // que el pedido pase a "Por enviar". Idempotente vía fulfillmentStatus.
+    async function ensureFulfillment(): Promise<{ created: boolean; error?: string }> {
+      if (session!.fulfillmentStatus === 'created') return { created: true };
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const data = await medusaRequest<{ order: any }>(`/admin/orders/${orderId}?fields=+items.*`);
+        const fulfillmentItems: { id: string; quantity: number }[] = [];
+        for (const it of session!.items.getItems()) {
+          if (it.quantityPicked <= 0) continue;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const medusaItem = data.order.items?.find((i: any) => i.id === it.lineItemId);
+          if (medusaItem) fulfillmentItems.push({ id: medusaItem.id, quantity: it.quantityPicked });
+        }
+        if (fulfillmentItems.length === 0) return { created: false };
+        await createFulfillmentForOrder(orderId, fulfillmentItems);
+        session!.fulfillmentStatus = 'created';
+        invalidateOrdersCache();
+        return { created: true };
+      } catch (fulfillError) {
+        console.error('[Voucher] Error creating fulfillment:', fulfillError);
+        session!.fulfillmentStatus = 'failed';
+        return { created: false, error: fulfillError instanceof Error ? fulfillError.message : String(fulfillError) };
+      }
+    }
+
+    // Idempotencia: si ya hay un voucher resuelto, no crear otra promoción.
+    // Pero igual aseguramos el fulfillment (puede haber quedado sin crear o fallado).
     if (session.faltanteResolution === 'voucher' || (session.voucherCode && session.voucherCode.length > 0)) {
+      const fulfillment = await ensureFulfillment();
+      await em.flush();
       const existingValue = session.voucherValue ?? 0;
       return NextResponse.json({
         success: true,
@@ -63,6 +98,8 @@ export async function POST(req: NextRequest) {
         voucherValue: existingValue,
         orderDisplayId: session.orderDisplayId,
         alreadyResolved: true,
+        fulfillmentCreated: fulfillment.created,
+        ...(fulfillment.error ? { fulfillmentError: fulfillment.error } : {}),
       });
     }
 
@@ -105,6 +142,9 @@ export async function POST(req: NextRequest) {
     session.faltanteResolution = 'voucher';
     session.faltanteResolvedAt = new Date();
     session.faltanteNotes = `Voucher: ${promotion.code} - Valor: $${roundedValue}${notes ? ` - ${notes}` : ''}`;
+
+    // Cerrar el cumplimiento en Medusa con lo pickeado (el faltante va por voucher).
+    const fulfillment = await ensureFulfillment();
     await em.flush();
 
     // Audit log
@@ -113,12 +153,14 @@ export async function POST(req: NextRequest) {
       userName: session.userName,
       orderId,
       orderDisplayId: session.orderDisplayId,
-      details: `Voucher creado: ${promotion.code} por $${roundedValue}`,
+      details: `Voucher creado: ${promotion.code} por $${roundedValue}${fulfillment.created ? ' - Fulfillment creado' : ''}`,
       metadata: {
         resolution: 'voucher',
         promotionId: promotion.id,
         promotionCode: promotion.code,
         promotionValue: roundedValue,
+        fulfillmentCreated: fulfillment.created,
+        ...(fulfillment.error ? { fulfillmentError: fulfillment.error } : {}),
         notes,
       },
     });
@@ -143,6 +185,8 @@ export async function POST(req: NextRequest) {
       voucherCode,
       voucherValue: roundedValue,
       orderDisplayId: session.orderDisplayId,
+      fulfillmentCreated: fulfillment.created,
+      ...(fulfillment.error ? { fulfillmentError: fulfillment.error } : {}),
     });
   } catch (error) {
     return errorResponse(error);
