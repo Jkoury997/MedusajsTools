@@ -4,19 +4,21 @@ import { User } from '@/lib/entities';
 import { audit } from '@/lib/audit';
 import { hashPin, pinLookupHashes, isLegacyStored, encryptPin } from '@/lib/pin';
 import { errorResponse } from '@/lib/http';
-import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { getClientIp, isRateLimited, registerFailedAttempt, clearRateLimit } from '@/lib/rate-limit';
 
 const ADMIN_PIN = process.env.ADMIN_PIN;
 
 // POST /api/picking/auth - Validar PIN
 export async function POST(req: NextRequest) {
   try {
-    // Rate limiting: 5 intentos por IP cada 15 minutos
+    // Rate limiting anti brute-force: bloquea por IP tras varios intentos
+    // FALLIDOS (los logins exitosos no cuentan; ver rate-limit.ts).
     const ip = getClientIp(req);
-    const rateCheck = checkRateLimit(`auth:${ip}`, 5, 15 * 60 * 1000);
-    if (!rateCheck.allowed) {
+    const rlKey = `auth:${ip}`;
+    const limited = isRateLimited(rlKey);
+    if (limited.blocked) {
       return NextResponse.json(
-        { success: false, error: `Demasiados intentos. Reintenta en ${Math.ceil((rateCheck.retryAfterSeconds || 0) / 60)} minutos.` },
+        { success: false, error: `Demasiados intentos. Reintenta en ${Math.ceil((limited.retryAfterSeconds || 0) / 60)} minutos.` },
         { status: 429 }
       );
     }
@@ -33,6 +35,7 @@ export async function POST(req: NextRequest) {
 
     // Admin puede hacer picking también
     if (ADMIN_PIN && pin === ADMIN_PIN) {
+      clearRateLimit(rlKey);
       return NextResponse.json({
         success: true,
         user: {
@@ -50,11 +53,14 @@ export async function POST(req: NextRequest) {
     });
 
     if (!user) {
+      registerFailedAttempt(rlKey);
       return NextResponse.json(
         { success: false, error: 'PIN incorrecto o sin permiso de picking' },
         { status: 401 }
       );
     }
+
+    clearRateLimit(rlKey);
 
     // Migración perezosa: re-hashear PIN legacy a HMAC + cifrar para verlo en admin
     let needFlush = false;

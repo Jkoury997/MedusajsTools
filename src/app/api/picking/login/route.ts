@@ -4,7 +4,7 @@ import { User } from '@/lib/entities';
 import { audit } from '@/lib/audit';
 import { hashPin, pinLookupHashes, isLegacyStored, encryptPin } from '@/lib/pin';
 import { createSessionToken, SESSION_DURATION } from '@/lib/auth';
-import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { getClientIp, isRateLimited, registerFailedAttempt, clearRateLimit } from '@/lib/rate-limit';
 
 const ADMIN_PIN = process.env.ADMIN_PIN;
 
@@ -15,12 +15,14 @@ if (!ADMIN_PIN) {
 // POST /api/picking/login - Login con PIN
 export async function POST(req: NextRequest) {
   try {
-    // Rate limiting: 5 intentos por IP cada 15 minutos
+    // Rate limiting anti brute-force: bloquea por IP tras varios intentos
+    // FALLIDOS (los logins exitosos no cuentan; ver rate-limit.ts).
     const ip = getClientIp(req);
-    const rateCheck = checkRateLimit(`login:${ip}`, 5, 15 * 60 * 1000);
-    if (!rateCheck.allowed) {
+    const rlKey = `login:${ip}`;
+    const limited = isRateLimited(rlKey);
+    if (limited.blocked) {
       return NextResponse.json(
-        { success: false, error: `Demasiados intentos. Reintenta en ${Math.ceil((rateCheck.retryAfterSeconds || 0) / 60)} minutos.` },
+        { success: false, error: `Demasiados intentos. Reintenta en ${Math.ceil((limited.retryAfterSeconds || 0) / 60)} minutos.` },
         { status: 429 }
       );
     }
@@ -49,6 +51,7 @@ export async function POST(req: NextRequest) {
         maxAge: SESSION_DURATION / 1000,
         path: '/',
       });
+      clearRateLimit(rlKey);
       audit({ action: 'login', userName: 'Admin', details: 'Login como admin' });
       return response;
     }
@@ -86,10 +89,12 @@ export async function POST(req: NextRequest) {
         maxAge: SESSION_DURATION / 1000,
         path: '/',
       });
+      clearRateLimit(rlKey);
       audit({ action: 'login', userName: user.name, userId: user.id, details: `Login como ${user.role}` });
       return response;
     }
 
+    registerFailedAttempt(rlKey);
     return NextResponse.json(
       { success: false, error: 'PIN incorrecto' },
       { status: 401 }
