@@ -15,7 +15,6 @@ export default function Recoleccion() {
   const [lastKey, setLastKey] = useState('');
   const [confirmMissing, setConfirmMissing] = useState(false);
   const [finishing, setFinishing] = useState(false);
-  const [manual, setManual] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -100,15 +99,6 @@ export default function Recoleccion() {
           <div className="sub">Juntá todo en una recorrida</div>
         </div>
         <div className="right">
-          <button
-            className="back"
-            onClick={() => setManual((v) => !v)}
-            aria-label="modo manual"
-            title={manual ? 'Modo manual activo' : 'Activar modo manual'}
-            style={manual ? { background: 'var(--pink)', color: '#fff' } : undefined}
-          >
-            <Icon name="hand" />
-          </button>
           <button className="back" onClick={() => router.push(`/olas/${id}/imprimir`)} aria-label="imprimir">
             <Icon name="print" />
           </button>
@@ -176,7 +166,7 @@ export default function Recoleccion() {
                             <span className="count" style={isLast ? { color: 'var(--pink-fg)' } : { color: 'var(--muted)' }}>
                               {l.quantityPicked}<span className="tot">/{l.quantityRequired}</span>
                             </span>
-                            {(manual || !l.barcode) && (
+                            {(
                               <button
                                 onClick={() => manualAdd(l)}
                                 aria-label="sumar uno"
