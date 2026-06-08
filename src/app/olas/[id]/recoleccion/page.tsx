@@ -118,7 +118,17 @@ export default function Recoleccion() {
 
             <div className="card pad0">
               {[...wave.lines]
-                .sort((a, b) => b.quantityRequired - a.quantityRequired)
+                .sort((a, b) => {
+                  // Los completos (ya recolectados) caen al fondo de la lista.
+                  const aDone = a.quantityPicked >= a.quantityRequired;
+                  const bDone = b.quantityPicked >= b.quantityRequired;
+                  if (aDone !== bDone) return aDone ? 1 : -1;
+                  // Resto: orden ascendente por external_id (código del producto),
+                  // numérico-natural, con fallback a sku/barcode.
+                  const ax = a.externalId || a.sku || a.barcode || '';
+                  const bx = b.externalId || b.sku || b.barcode || '';
+                  return ax.localeCompare(bx, undefined, { numeric: true, sensitivity: 'base' });
+                })
                 .map((l, idx) => {
                   const done = l.quantityPicked >= l.quantityRequired;
                   const isLast = l.id === lastKey;

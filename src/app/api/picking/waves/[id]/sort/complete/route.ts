@@ -23,7 +23,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       const wave = await tem.findOne(
         PickingWave,
         { id },
-        { populate: ['orders.items'], lockMode: LockMode.PESSIMISTIC_WRITE }
+        // 'lines' es necesario porque serializeWave() recorre wave.lines al responder.
+        { populate: ['orders.items', 'lines'], lockMode: LockMode.PESSIMISTIC_WRITE }
       );
       if (!wave) throw new HttpError(404, 'Ola no encontrada');
       if (wave.status !== 'sorting') {

@@ -20,7 +20,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const em = await getEm();
     const { id } = await params;
 
-    const wave = await em.findOne(PickingWave, { id }, { populate: ['orders.items'] });
+    // 'lines' es necesario porque serializeWave() recorre wave.lines al responder.
+    const wave = await em.findOne(PickingWave, { id }, { populate: ['orders.items', 'lines'] });
     if (!wave) throw new HttpError(404, 'Ola no encontrada');
 
     if (wave.status !== 'ready') {

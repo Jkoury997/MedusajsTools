@@ -21,6 +21,7 @@ export default function Mesa() {
   const [fb, setFb] = useState<Feedback | null>(null);
   const [error, setError] = useState('');
   const [closing, setClosing] = useState(false);
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -36,6 +37,11 @@ export default function Mesa() {
   }, [id]);
 
   async function onScan(code: string) {
+    // Mostramos el estado "leyendo" y limpiamos el resultado anterior para que
+    // el que prepara vea claramente que este escaneo se está procesando (y no
+    // confunda el cartel del ítem anterior con el actual).
+    setScanning(true);
+    setFb(null);
     try {
       const data = await api<{
         assignment: { letter: string; orderDisplayId: number; title?: string; sku?: string };
@@ -50,6 +56,8 @@ export default function Mesa() {
       });
     } catch (e) {
       setFb({ kind: 'err', msg: (e as Error).message });
+    } finally {
+      setScanning(false);
     }
   }
 
@@ -86,7 +94,14 @@ export default function Mesa() {
           <>
             <ScanInput onScan={onScan} lite placeholder="Escaneá un ítem…" />
 
-            {fb && fb.kind === 'ok' && (
+            {scanning && (
+              <div className="giant">
+                <div className="spin" style={{ margin: '8px auto' }} />
+                <div className="lbl">Leyendo…</div>
+              </div>
+            )}
+
+            {!scanning && fb && fb.kind === 'ok' && (
               <div className="giant">
                 <div className="lbl">Clasificá en</div>
                 <div className="L">{fb.letter}</div>
@@ -94,7 +109,7 @@ export default function Mesa() {
                 {fb.prod && <div className="prod">{fb.prod}</div>}
               </div>
             )}
-            {fb && fb.kind === 'err' && (
+            {!scanning && fb && fb.kind === 'err' && (
               <div className="giant err">
                 <Icon name="x" style={{ width: 46, height: 46, margin: '8px auto 0', display: 'block' }} />
                 <div className="errmsg">{fb.msg}</div>
