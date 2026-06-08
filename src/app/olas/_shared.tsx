@@ -184,7 +184,10 @@ export function ScanInput({
             setVal('');
           }
         }}
-        inputMode="text"
+        // El alta de datos es siempre por lector de código de barras (que emula
+        // teclado físico). inputMode="none" mantiene el foco para recibir el
+        // escaneo pero evita que se abra el teclado en pantalla del dispositivo.
+        inputMode="none"
         autoCapitalize="off"
         autoCorrect="off"
         spellCheck={false}
