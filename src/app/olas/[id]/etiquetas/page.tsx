@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api, Icon } from '../../_shared';
-import { printWaveLabels, printPdfUrl, type WaveLabelData } from '@/lib/wave-label';
+import { printWaveLabels, type WaveLabelData } from '@/lib/wave-label';
 
 export default function Etiquetas() {
   const router = useRouter();
@@ -69,17 +69,15 @@ export default function Etiquetas() {
                   </div>
                   <div className="row gap8" style={{ flex: 'none' }}>
                     {l.isML && (
-                      <button
+                      <a
                         className="btn btn-secondary"
                         style={{ padding: '9px 13px', fontSize: 13 }}
-                        onClick={() =>
-                          printPdfUrl(
-                            `/api/picking/ml-label?${l.mlShipmentId ? `shipmentId=${l.mlShipmentId}` : `orderId=${l.orderId}`}`
-                          )
-                        }
+                        href={`/api/picking/ml-label?${l.mlShipmentId ? `shipmentId=${l.mlShipmentId}` : `orderId=${l.orderId}`}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
                       >
                         <Icon name="print" style={{ width: 16, height: 16 }} /> Etiqueta ML
-                      </button>
+                      </a>
                     )}
                     <button
                       className="btn btn-primary"
