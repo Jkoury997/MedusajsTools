@@ -125,6 +125,9 @@ export default function Listo() {
 
       {wave && (
         <footer className="pfoot">
+          <button className="btn btn-secondary btn-block" onClick={() => router.push(`/olas/${id}/etiquetas`)}>
+            <Icon name="print" /> Imprimir etiquetas de envío
+          </button>
           {completed ? (
             <button className="btn btn-primary btn-block btn-lg" onClick={() => router.push(`/olas`)}>
               Volver a olas
