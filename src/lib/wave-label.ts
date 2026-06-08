@@ -70,7 +70,9 @@ function labelBlock(d: WaveLabelData): string {
   <div class="sec sec-s">
     <small>${destLabel}</small>
     <b>${escapeHtml(d.destinationName)}</b>
-    ${d.destinationAddress ? `<i>${escapeHtml(d.destinationAddress)}</i>` : ''}
+    ${d.destinationAddress
+      ? d.destinationAddress.split('\n').map((line) => `<i>${escapeHtml(line)}</i>`).join('')
+      : ''}
     ${d.isML && d.mlTracking ? `<i>Tracking ML: ${escapeHtml(d.mlTracking)}</i>` : ''}
   </div>
   <div class="ft">
@@ -105,4 +107,34 @@ export function printWaveLabels(labels: WaveLabelData[]): void {
   if (!printWindow) return;
   printWindow.document.write(buildWaveLabelsHtml(labels));
   printWindow.document.close();
+}
+
+/**
+ * Abre un PDF (mismo origen) en una ventana y dispara el diálogo de impresión
+ * automáticamente. Se usa para la etiqueta oficial del transportista (Mercado
+ * Envíos), que el visor de PDF muestra pero no manda a imprimir solo —
+ * sobre todo en tablets. Si el navegador no deja imprimir el PDF embebido, la
+ * ventana igual queda mostrándolo para imprimirlo a mano.
+ */
+export function printPdfUrl(url: string): void {
+  const w = window.open('', '_blank', 'width=420,height=600');
+  if (!w) return;
+  w.document.write(`<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Etiqueta de envío</title>
+<style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%}</style></head>
+<body>
+<iframe id="f" src="${url}"></iframe>
+<script>
+var f = document.getElementById('f');
+f.onload = function () {
+  setTimeout(function () {
+    try { f.contentWindow.focus(); f.contentWindow.print(); }
+    catch (e) { try { window.print(); } catch (e2) {} }
+  }, 600);
+};
+</script>
+</body>
+</html>`);
+  w.document.close();
 }

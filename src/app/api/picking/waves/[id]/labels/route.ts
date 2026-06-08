@@ -4,7 +4,7 @@ import { requireSession } from '@/lib/session';
 import { errorResponse, HttpError } from '@/lib/http';
 import { PickingWave } from '@/lib/entities';
 import { getOrderById, isCashPayment, isMercadoLibreOrder } from '@/lib/medusa';
-import type { Order } from '@/lib/medusa';
+import type { Order, Address } from '@/lib/medusa';
 import { isStorePickup, getShippingLabel } from '@/lib/shipping';
 import type { WaveLabelData } from '@/lib/wave-label';
 
@@ -24,7 +24,32 @@ function customerName(order: Order): string {
   return order.email || order.customer?.email || 'Sin nombre';
 }
 
-/** Destino legible: tienda de retiro o método/transportista + dirección. */
+/** Dirección de envío completa, una línea por dato (calle, piso/depto, ciudad,
+ * provincia, CP, país, DNI). Se renderiza con saltos de línea en la etiqueta. */
+function fullAddress(addr: Address | null): string {
+  if (!addr) return '';
+  const m = addr.metadata;
+  const street = addr.address_1 || [m?.street_name, m?.street_number].filter(Boolean).join(' ');
+  const floorApt = [
+    m?.floor && `Piso ${m.floor}`,
+    m?.apartment && `Depto ${m.apartment}`,
+  ].filter(Boolean).join(' · ');
+  const cityProv = [addr.city, addr.province].filter(Boolean).join(', ');
+  const cpCountry = [
+    addr.postal_code && `CP ${addr.postal_code}`,
+    addr.country_code && addr.country_code.toUpperCase(),
+  ].filter(Boolean).join(' · ');
+  return [
+    street,
+    addr.address_2,
+    floorApt,
+    cityProv,
+    cpCountry,
+    m?.dni && `DNI ${m.dni}`,
+  ].filter(Boolean).join('\n');
+}
+
+/** Destino legible: tienda de retiro o método/transportista + dirección completa. */
 function destination(order: Order): Pick<WaveLabelData, 'destinationKind' | 'destinationName' | 'destinationAddress'> {
   const method = order.shipping_methods?.[0];
   if (isStorePickup(method?.name)) {
@@ -35,14 +60,10 @@ function destination(order: Order): Pick<WaveLabelData, 'destinationKind' | 'des
       destinationAddress: store?.address || '',
     };
   }
-  const addr = order.shipping_address;
-  const parts = addr
-    ? [addr.address_1, addr.city, addr.province].filter(Boolean).join(', ')
-    : '';
   return {
     destinationKind: 'envio',
     destinationName: getShippingLabel(method?.name) || method?.name || 'Envío',
-    destinationAddress: parts,
+    destinationAddress: fullAddress(order.shipping_address),
   };
 }
 

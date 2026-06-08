@@ -25,6 +25,15 @@ export interface FinalizeResult {
  * Crea el fulfillment en Medusa con las cantidades realmente clasificadas.
  * El reintento ante falta de reserva (ML/ERP) vive en createFulfillmentForOrder.
  */
+const FULFILLED_STATUSES = [
+  'fulfilled',
+  'partially_fulfilled',
+  'shipped',
+  'partially_shipped',
+  'delivered',
+  'partially_delivered',
+];
+
 async function createFulfillmentInMedusa(
   orderId: string,
   pickedByLineItem: Map<string, number>
@@ -34,6 +43,10 @@ async function createFulfillmentInMedusa(
     `/admin/orders/${orderId}?fields=+items.*,+shipping_methods.*`
   );
   const order = orderData.order;
+  // Si la orden ya tiene fulfillment en Medusa, no duplicamos (lo tratamos como
+  // creado). Evita el 500 de Medusa al intentar refulfillment.
+  if (FULFILLED_STATUSES.includes(order.fulfillment_status)) return;
+
   const fulfillmentItems = order.items
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .map((item: any) => ({ id: item.id, quantity: pickedByLineItem.get(item.id) || 0 }));
@@ -79,11 +92,47 @@ export async function finalizeWaveOrder(
     status: { $in: ['in_progress', 'completed'] },
   });
   if (existing) {
-    return {
-      ...base,
-      fulfillmentCreated: existing.fulfillmentStatus === 'created',
-      skipped: existing.status === 'completed' ? 'already_completed' : 'in_progress_elsewhere',
-    };
+    const skipped: FinalizeResult['skipped'] =
+      existing.status === 'completed' ? 'already_completed' : 'in_progress_elsewhere';
+
+    // Si el fulfillment ya se creó, no hay nada que hacer.
+    if (existing.fulfillmentStatus === 'created') {
+      return { ...base, fulfillmentCreated: true, skipped };
+    }
+
+    // Hay una sesión (p. ej. iniciada en el flujo individual al imprimir) pero
+    // SIN fulfillment. Si el pedido no quedó con faltantes, creamos el
+    // cumplimiento ahora: este es el caso "dice OK pero no genera el fulfillment".
+    if (!hasMissing) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const picked = new Map<string, number>(items.map((i: any) => [i.lineItemId, i.quantitySorted]));
+        await createFulfillmentInMedusa(orderId, picked);
+        existing.fulfillmentStatus = 'created';
+        await em.flush();
+        base.fulfillmentCreated = true;
+        audit({
+          action: 'fulfillment_create',
+          userName: user.name,
+          userId: user.id,
+          orderId,
+          orderDisplayId: waveOrder.orderDisplayId,
+          details: `Fulfillment creado sobre sesión existente (ola #${wave.displayNumber}, letra ${waveOrder.letter})`,
+        });
+      } catch (error) {
+        base.fulfillmentError = error instanceof Error ? error.message : 'Error al crear fulfillment';
+        audit({
+          action: 'fulfillment_error',
+          userName: user.name,
+          userId: user.id,
+          orderId,
+          orderDisplayId: waveOrder.orderDisplayId,
+          details: `Error fulfillment sobre sesión existente (ola #${wave.displayNumber}): ${base.fulfillmentError}`,
+        });
+      }
+    }
+
+    return { ...base, skipped };
   }
 
   // PASO 1: fulfillment (antes de materializar la sesión). Si hay faltantes,
