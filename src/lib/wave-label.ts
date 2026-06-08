@@ -70,7 +70,9 @@ function labelBlock(d: WaveLabelData): string {
   <div class="sec sec-s">
     <small>${destLabel}</small>
     <b>${escapeHtml(d.destinationName)}</b>
-    ${d.destinationAddress ? `<i>${escapeHtml(d.destinationAddress)}</i>` : ''}
+    ${d.destinationAddress
+      ? d.destinationAddress.split('\n').map((line) => `<i>${escapeHtml(line)}</i>`).join('')
+      : ''}
     ${d.isML && d.mlTracking ? `<i>Tracking ML: ${escapeHtml(d.mlTracking)}</i>` : ''}
   </div>
   <div class="ft">
