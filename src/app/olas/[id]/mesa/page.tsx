@@ -22,6 +22,9 @@ export default function Mesa() {
   const [error, setError] = useState('');
   const [closing, setClosing] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -69,6 +72,17 @@ export default function Mesa() {
     } catch (e) {
       setError((e as Error).message);
       setClosing(false);
+    }
+  }
+
+  async function cancelWave() {
+    setCancelling(true);
+    try {
+      await api(`/api/picking/waves/${id}`, { method: 'DELETE', body: { reason: cancelReason.trim() } });
+      router.push('/olas');
+    } catch (e) {
+      setError((e as Error).message);
+      setCancelling(false);
     }
   }
 
@@ -160,7 +174,39 @@ export default function Mesa() {
           <button className="btn btn-secondary btn-block" onClick={close} disabled={closing}>
             {closing ? 'Cerrando…' : 'Cerrar clasificación'}
           </button>
+          <button className="btn btn-ghost btn-block" onClick={() => setCancelOpen(true)} disabled={closing}>
+            Cancelar ola
+          </button>
         </footer>
+      )}
+
+      {cancelOpen && (
+        <div className="overlay" onClick={() => !cancelling && setCancelOpen(false)}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <h4>¿Cancelar la ola #{wave?.displayNumber}?</h4>
+            <p>Se cancela la ola y se libera la mesa. Los pedidos vuelven al pool para armar otra ola. Escribí el motivo (mínimo 3 caracteres).</p>
+            <textarea
+              className="ta"
+              rows={3}
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Motivo (ej: ola armada por error, pedido equivocado)"
+            />
+            <div className="row gap8" style={{ marginTop: 12 }}>
+              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setCancelOpen(false)} disabled={cancelling}>
+                Volver
+              </button>
+              <button
+                className="btn btn-danger"
+                style={{ flex: 1 }}
+                onClick={cancelWave}
+                disabled={cancelling || cancelReason.trim().length < 3}
+              >
+                {cancelling ? 'Cancelando…' : 'Cancelar ola'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

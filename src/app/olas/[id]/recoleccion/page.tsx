@@ -15,6 +15,9 @@ export default function Recoleccion() {
   const [lastKey, setLastKey] = useState('');
   const [confirmMissing, setConfirmMissing] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -75,6 +78,17 @@ export default function Recoleccion() {
       show('err', (e as Error).message);
       setFinishing(false);
       setConfirmMissing(false);
+    }
+  }
+
+  async function cancelWave() {
+    setCancelling(true);
+    try {
+      await api(`/api/picking/waves/${id}`, { method: 'DELETE', body: { reason: cancelReason.trim() } });
+      router.push('/olas');
+    } catch (e) {
+      show('err', (e as Error).message);
+      setCancelling(false);
     }
   }
 
@@ -205,7 +219,39 @@ export default function Recoleccion() {
           <button className="btn btn-primary btn-block btn-lg" onClick={onFinishClick} disabled={finishing}>
             {finishing ? 'Cerrando…' : 'Terminar recolección'}
           </button>
+          <button className="btn btn-ghost btn-block" onClick={() => setCancelOpen(true)} disabled={finishing}>
+            Cancelar ola
+          </button>
         </footer>
+      )}
+
+      {cancelOpen && (
+        <div className="overlay" onClick={() => !cancelling && setCancelOpen(false)}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <h4>¿Cancelar la ola #{wave?.displayNumber}?</h4>
+            <p>Se cancela la ola y se libera la mesa. Los pedidos vuelven al pool para armar otra ola. Escribí el motivo (mínimo 3 caracteres).</p>
+            <textarea
+              className="ta"
+              rows={3}
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Motivo (ej: ola armada por error, pedido equivocado)"
+            />
+            <div className="row gap8" style={{ marginTop: 12 }}>
+              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setCancelOpen(false)} disabled={cancelling}>
+                Volver
+              </button>
+              <button
+                className="btn btn-danger"
+                style={{ flex: 1 }}
+                onClick={cancelWave}
+                disabled={cancelling || cancelReason.trim().length < 3}
+              >
+                {cancelling ? 'Cancelando…' : 'Cancelar ola'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {confirmMissing && (
