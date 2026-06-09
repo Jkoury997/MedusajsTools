@@ -186,3 +186,11 @@
 .olas-root .seg-mode { display: flex; gap: 6px; background: var(--soft); border-radius: 12px; padding: 4px; }
 .olas-root .seg-mode button { flex: 1; border: none; background: none; font: inherit; font-size: 13px; font-weight: 700; color: var(--muted); padding: 9px; border-radius: 9px; cursor: pointer; }
 .olas-root .seg-mode button[data-active="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+
+/* ---- Selector de entrada (Tienda vs Depósito) ---- */
+.olas-root .opt-card { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; font: inherit; background: #fff; border: 2px solid var(--border); border-radius: 16px; padding: 16px; cursor: pointer; transition: border-color .12s; }
+.olas-root .opt-card:active { border-color: var(--pink); }
+.olas-root .opt-card .oic { width: 48px; height: 48px; border-radius: 13px; display: flex; align-items: center; justify-content: center; flex: none; }
+.olas-root .opt-card .oic svg { width: 26px; height: 26px; }
+.olas-root .opt-card .ot { font-weight: 800; font-size: 16px; }
+.olas-root .opt-card .od { font-size: 12.5px; color: var(--muted); margin-top: 2px; }

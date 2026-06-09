@@ -116,6 +116,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // La raíz es el selector público (Tienda vs Depósito). El page.tsx decide:
+  // depósito logueado → su home; resto → selector de entrada.
+  if (pathname === '/') {
+    return NextResponse.next();
+  }
+
   // Estáticos de Next.js y recursos
   if (
     pathname.startsWith('/_next') ||

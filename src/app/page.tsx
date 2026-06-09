@@ -1,11 +1,15 @@
-import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import HomeScreen from './HomeScreen';
+import LandingChooser from './LandingChooser';
+
+const DEPOSITO_ROLES = ['picker', 'ecommerce', 'admin'];
 
 export default async function HomePage() {
   const session = await getSession();
-  if (!session) redirect('/login');
-  // La tienda no opera el depósito: va directo a su portal.
-  if (session.role === 'store') redirect('/tienda');
-  return <HomeScreen />;
+  // Usuario de depósito ya logueado → su home directo.
+  if (session && DEPOSITO_ROLES.includes(session.role)) {
+    return <HomeScreen />;
+  }
+  // Sin sesión, o sesión de tienda: dejar elegir Tienda o Depósito (Pickeo).
+  return <LandingChooser />;
 }
