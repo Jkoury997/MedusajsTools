@@ -27,6 +27,7 @@ const GESTION_PATHS = [
   '/gestion',
   '/olas',
   '/faltantes',
+  '/despacho',
   '/api/gestion',
   '/api/picking/waves',
   '/api/picking/ml-label',
