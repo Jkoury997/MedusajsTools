@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPaidOrders } from '@/lib/medusa';
+import { getPaidOrders, isCashPayment } from '@/lib/medusa';
 import { getEm } from '@/lib/db';
 import { StoreDelivery, User } from '@/lib/entities';
 import { requireSession } from '@/lib/session';
@@ -60,13 +60,21 @@ export async function GET(req: NextRequest) {
     const orderIds = storeOrders.map((o: any) => o.id);
     const deliveries = await em.find(StoreDelivery, { orderId: { $in: orderIds } });
     const deliveredSet = new Set(deliveries.map((d: any) => d.orderId));
+    const deliveredAtMap = new Map(deliveries.map((d): [string, Date] => [d.orderId, d.deliveredAt]));
 
-    // Enriquecer pedidos: si MongoDB dice entregado pero Medusa no actualizó, marcarlo
+    // Enriquecer pedidos: flag de efectivo (para cobrar al retirar), fecha de entrega
+    // (para "Entregados hoy" / hora) y, si MongoDB dice entregado pero Medusa no
+    // actualizó, reflejarlo en el estado.
     const enrichedOrders = storeOrders.map((order: any) => {
+      const base = {
+        ...order,
+        isCash: isCashPayment(order),
+        deliveredAt: deliveredAtMap.get(order.id) || null,
+      };
       if (deliveredSet.has(order.id) && order.fulfillment_status === 'fulfilled') {
-        return { ...order, fulfillment_status: 'shipped', _deliveredLocally: true };
+        return { ...base, fulfillment_status: 'shipped', _deliveredLocally: true };
       }
-      return order;
+      return base;
     });
 
     return NextResponse.json({
