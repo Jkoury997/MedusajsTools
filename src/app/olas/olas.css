@@ -146,3 +146,11 @@
 .olas-root .resolve-card { display: flex; align-items: center; gap: 13px; padding: 15px; border-radius: var(--r); background: #fffbeb; border: 1px solid #fde68a; cursor: pointer; width: 100%; text-align: left; font: inherit; }
 .olas-root .resolve-card .ic { width: 46px; height: 46px; border-radius: 13px; background: #fef3c7; color: var(--warn); display: flex; align-items: center; justify-content: center; flex: none; }
 .olas-root .resolve-card .ic svg { width: 24px; height: 24px; }
+
+/* ---- Despachos: pestañas Por enviar / Enviados ---- */
+.olas-root .tabs2 { display: flex; gap: 8px; }
+.olas-root .tab2 { flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 11px; border-radius: 12px; background: var(--soft); border: none; font: inherit; font-size: 14px; font-weight: 700; color: var(--muted); cursor: pointer; }
+.olas-root .tab2[data-active="true"] { background: var(--pink-100); color: var(--pink-fg); }
+.olas-root .tab2 .cn { font-size: 11px; font-weight: 800; background: rgba(0,0,0,.07); border-radius: 99px; padding: 1px 7px; }
+.olas-root .dgroup { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; }
+.olas-root .dgroup .dl { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }

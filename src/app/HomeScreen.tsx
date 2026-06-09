@@ -99,7 +99,7 @@ export default function HomeScreen() {
             <FnCard
               icon={I.truck} title="Despacho" sub="Por enviar / enviados"
               count={porEnviar === null ? '…' : `${porEnviar} por enviar`}
-              onClick={() => router.push('/gestion?tab=por-enviar')}
+              onClick={() => router.push('/despacho?tab=por-enviar')}
             />
             <FnCard
               icon={I.shop} title="Tienda" sub="Retiros en sucursal"

@@ -60,6 +60,11 @@ export async function GET(req: NextRequest) {
       // Para retiro en tienda: determinar si fue enviado a tienda (via MongoDB)
       const isSentToStore = isStorePickup && !!storeShipment;
 
+      // Timestamps reales de despacho (para agrupar la tab Enviados por fecha).
+      const fulfillments: { shipped_at?: string | null; delivered_at?: string | null }[] = order.fulfillments || [];
+      const shippedAt = fulfillments.map((f) => f.shipped_at).filter(Boolean).sort().pop() || null;
+      const deliveredAt = fulfillments.map((f) => f.delivered_at).filter(Boolean).sort().pop() || null;
+
       const orderData: Record<string, any> = {
         id: order.id,
         displayId: order.display_id,
@@ -92,6 +97,10 @@ export async function GET(req: NextRequest) {
         mlShipmentStatus: order.metadata?.ml_shipment_status || null,
         mlTrackingNumber: order.metadata?.ml_tracking_number || null,
         sentToStoreAt: storeShipment?.shippedAt || null,
+        // Para la tab Enviados: fecha real de despacho + DNI de quien retira.
+        shippedAt,
+        deliveredAt,
+        dni: order.shipping_address?.metadata?.dni || null,
         session: completedSession ? {
           totalRequired: completedSession.totalRequired,
           totalPicked: completedSession.totalPicked,
