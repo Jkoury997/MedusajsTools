@@ -120,6 +120,10 @@ export async function GET(req: NextRequest) {
                 lineItemId: i.lineItemId,
                 sku: i.sku,
                 barcode: i.barcode,
+                // external_id del producto = código que se muestra; cae a sku de variante.
+                externalId: medusaItem?.variant?.product?.external_id || i.sku || null,
+                color: medusaItem?.variant?.metadata?.color || null,
+                size: medusaItem?.variant?.metadata?.size || null,
                 quantityRequired: i.quantityRequired,
                 quantityPicked: i.quantityPicked,
                 quantityMissing: remaining,

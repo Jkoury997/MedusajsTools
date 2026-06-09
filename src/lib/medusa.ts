@@ -252,9 +252,10 @@ async function fetchAllOrders(): Promise<void> {
   daysAgo.setHours(0, 0, 0, 0);
   const dateFilter = daysAgo.toISOString();
 
-  // Campos reducidos: sin variant.product.* (lo más pesado)
+  // Campos reducidos: NO traemos variant.product.* entero (lo más pesado), pero sí
+  // el external_id del producto (código que se muestra en faltantes/despacho).
   // +metadata se necesita para detectar órdenes de Mercado Libre (metadata.sales_channel)
-  const fields = '+shipping_address.*,+customer.*,+items.*,+items.variant.*,+shipping_methods.*,+payment_collections.payments.*,+metadata';
+  const fields = '+shipping_address.*,+customer.*,+items.*,+items.variant.*,+items.variant.product.external_id,+shipping_methods.*,+payment_collections.payments.*,+metadata';
 
   while (hasMore) {
     const response = await medusaRequest<{ orders: unknown[]; count: number; offset: number; limit: number }>(

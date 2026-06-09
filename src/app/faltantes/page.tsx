@@ -11,7 +11,9 @@ interface MissingItem {
   lineItemId: string;
   sku?: string;
   barcode?: string;
-  title?: string;
+  externalId?: string | null;
+  color?: string | null;
+  size?: string | null;
   quantityMissing: number;
   unitPrice?: number;
 }
@@ -58,8 +60,13 @@ function WhatsIcon() {
   );
 }
 
-function itemLabel(it: MissingItem): string {
-  return it.title || it.sku || it.barcode || it.lineItemId;
+// Código del producto (external_id; cae a sku/barcode).
+function itemCode(it: MissingItem): string {
+  return it.externalId || it.sku || it.barcode || it.lineItemId;
+}
+// Atributos color · talle (los que existan).
+function itemAttrs(it: MissingItem): string {
+  return [it.color, it.size].filter(Boolean).join(' · ');
 }
 
 function voucherMessage(name: string, displayId: number, value: number, code: string): string {
@@ -221,12 +228,18 @@ export default function FaltantesPage() {
                   <div style={{ fontSize: 10.5, fontWeight: 800, color: '#b91c1c', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 5 }}>
                     {totalMissing === 1 ? 'Falta 1 unidad' : `Faltan ${totalMissing} unidades`}
                   </div>
-                  {(s?.missingItems || []).map((it, i) => (
-                    <div key={i} className="row between" style={{ fontSize: 12.5, color: '#991b1b', marginTop: i > 0 ? 4 : 0 }}>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{itemLabel(it)}</span>
-                      <span style={{ fontWeight: 800, flex: 'none', marginLeft: 8 }}>×{it.quantityMissing}</span>
-                    </div>
-                  ))}
+                  {(s?.missingItems || []).map((it, i) => {
+                    const attrs = itemAttrs(it);
+                    return (
+                      <div key={i} className="row between" style={{ fontSize: 12.5, color: '#991b1b', marginTop: i > 0 ? 6 : 0, gap: 8 }}>
+                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700 }}>{itemCode(it)}</span>
+                          {attrs && <span style={{ opacity: 0.8 }}> · {attrs}</span>}
+                        </span>
+                        <span style={{ fontWeight: 800, flex: 'none' }}>×{it.quantityMissing}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -287,9 +300,11 @@ export default function FaltantesPage() {
                 {(sheet.order.session?.missingItems || []).some((i) => i.unitPrice) && (
                   <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 11, padding: '10px 12px', marginBottom: 14 }}>
                     {(sheet.order.session?.missingItems || []).map((it, i) => (
-                      <div key={i} className="row between" style={{ fontSize: 12.5, color: '#991b1b', marginTop: i > 0 ? 4 : 0 }}>
-                        <span>{itemLabel(it)} ×{it.quantityMissing}</span>
-                        <span style={{ fontWeight: 800 }}>{formatPrice((it.unitPrice || 0) * it.quantityMissing)}</span>
+                      <div key={i} className="row between" style={{ fontSize: 12.5, color: '#991b1b', marginTop: i > 0 ? 4 : 0, gap: 8 }}>
+                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {itemCode(it)}{itemAttrs(it) ? ` · ${itemAttrs(it)}` : ''} ×{it.quantityMissing}
+                        </span>
+                        <span style={{ fontWeight: 800, flex: 'none' }}>{formatPrice((it.unitPrice || 0) * it.quantityMissing)}</span>
                       </div>
                     ))}
                   </div>
