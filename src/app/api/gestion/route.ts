@@ -197,21 +197,24 @@ export async function GET(req: NextRequest) {
       const orderIsStorePickup = classifyOrder(order) === 'store_pickup';
       const orderIsSentToStore = orderIsStorePickup && !!orderStoreShipment;
 
+      // Cada badge usa EXACTAMENTE la misma condición que su lista en el switch
+      // de arriba, para que el contador coincida con lo que se ve al entrar.
+      // Importante: el faltante NO depende del fulfillment_status — un pedido con
+      // sesión completada y faltante sin resolver cuenta aunque siga not_fulfilled.
+      const hasUnresolvedFaltantes = !!completedSession
+        && completedSession.totalMissing > 0
+        && ['pending', 'waiting'].includes(completedSession.faltanteResolution);
+
       if (['not_fulfilled', 'partially_fulfilled'].includes(fs) && !completedSession) {
         counts['por-preparar']++;
       }
-      if (['fulfilled', 'partially_fulfilled'].includes(fs) && completedSession) {
-        const hasUnresolvedFaltantes = completedSession.totalMissing > 0 && ['pending', 'waiting'].includes(completedSession.faltanteResolution);
-        if (hasUnresolvedFaltantes) {
-          counts.faltantes++;
-        } else if (orderIsSentToStore) {
-          // Retiro en tienda enviado: contar como enviado, no como por-enviar
-          counts.enviados++;
-        } else {
-          counts['por-enviar']++;
-        }
+      if (hasUnresolvedFaltantes) {
+        counts.faltantes++;
       }
-      if (['shipped', 'partially_shipped'].includes(fs)) {
+      if (['fulfilled', 'partially_fulfilled'].includes(fs) && completedSession && !hasUnresolvedFaltantes && !orderIsSentToStore) {
+        counts['por-enviar']++;
+      }
+      if (['shipped', 'partially_shipped'].includes(fs) || (orderIsSentToStore && ['fulfilled', 'partially_fulfilled'].includes(fs))) {
         counts.enviados++;
       }
     }
