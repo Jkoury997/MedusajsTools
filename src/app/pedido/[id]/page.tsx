@@ -236,6 +236,31 @@ function OrderHeader({ order, sortedItems, backUrl }: { order: Order; sortedItem
   );
 }
 
+// Aviso que reemplaza al armado individual: ahora la preparación es por Olas.
+function OlasPickingNotice() {
+  return (
+    <div className="print:hidden mt-4 bg-brand-50 border border-brand-200 rounded-2xl p-6 text-center">
+      <div className="w-14 h-14 bg-brand-100 rounded-2xl flex items-center justify-center mx-auto mb-3 text-brand-600">
+        <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 8 12 3 3 8l9 5 9-5z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8v8l9 5 9-5V8" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 13v8" />
+        </svg>
+      </div>
+      <h3 className="text-lg font-bold text-gray-900">Se prepara por Olas</h3>
+      <p className="text-sm text-gray-500 mt-1 mb-4">
+        El armado individual está deshabilitado. Sumá este pedido a una ola desde Picking por Olas.
+      </p>
+      <Link
+        href="/olas"
+        className="inline-flex items-center justify-center px-5 py-2.5 bg-brand-500 text-white rounded-xl font-bold hover:bg-brand-600 transition-colors"
+      >
+        Ir a Olas
+      </Link>
+    </div>
+  );
+}
+
 function getCustomerName(order: Order): string {
   // Intentar obtener nombre del customer
   if (order.customer?.first_name && order.customer?.last_name) {
@@ -428,6 +453,7 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
   }
 
   const fulfillmentStatus = order.fulfillment_status || 'not_fulfilled';
+  const isFulfilledLike = ['fulfilled', 'shipped', 'partially_shipped', 'delivered'].includes(fulfillmentStatus);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const orderIsCash = isCashPayment(order as any);
 
@@ -624,19 +650,8 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
           fulfillmentStatus={order.fulfillment_status || 'not_fulfilled'}
         />
 
-        {/* Picking Interface - solo si no hay sesión completada con faltantes pendientes */}
-        {!hasCompletedSessionWithFaltantes && (
-          <PickingInterface
-            key={order.id}
-            orderId={order.id}
-            orderDisplayId={order.display_id}
-            orderItems={sortedItems}
-            fulfillmentStatus={fulfillmentStatus}
-          />
-        )}
-
-        {/* Faltante Receive Interface - para pedidos con sesión completada y faltantes en espera */}
-        {hasCompletedSessionWithFaltantes && (
+        {/* Recepción de faltantes (mercadería que llega) — se conserva */}
+        {hasCompletedSessionWithFaltantes ? (
           <FaltanteReceiveInterface
             key={order.id}
             orderId={order.id}
@@ -644,6 +659,18 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
             orderItems={sortedItems}
             manualMode={type === 'manual'}
           />
+        ) : isFulfilledLike ? (
+          /* Pedido ya preparado: vista de despacho (empaque/estado), sin armado */
+          <PickingInterface
+            key={order.id}
+            orderId={order.id}
+            orderDisplayId={order.display_id}
+            orderItems={sortedItems}
+            fulfillmentStatus={fulfillmentStatus}
+          />
+        ) : (
+          /* Armado individual deshabilitado: se prepara por Olas */
+          <OlasPickingNotice />
         )}
       </div>
 

@@ -49,10 +49,19 @@ export default function OlasHome() {
   return (
     <div className="screen">
       <header className="head">
-        <button className="back" onClick={() => router.push('/gestion')}><Icon name="back" /></button>
+        <button className="back" onClick={() => router.push('/')}><Icon name="back" /></button>
         <div>
           <h3>Olas de picking</h3>
           <div className="sub">Depósito central · 2 mesas</div>
+        </div>
+        <div className="right">
+          <button
+            className="badge b-warn"
+            style={{ border: 'none', cursor: 'pointer' }}
+            onClick={() => router.push('/faltantes')}
+          >
+            Faltantes
+          </button>
         </div>
       </header>
 

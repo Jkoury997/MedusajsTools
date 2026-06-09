@@ -93,7 +93,10 @@ const TAB_LABELS: Record<TabId, string> = {
   enviados: 'Enviado',
 };
 
-const TAB_ORDER: TabId[] = ['por-preparar', 'faltantes', 'por-enviar', 'enviados'];
+// Olas obligatorio: gestión queda como pantalla de despacho. El armado (Preparar)
+// se hace por Olas y los faltantes se resuelven en /faltantes, así que esas dos
+// tabs se ocultan (el switch las mantiene por compatibilidad / deep-links viejos).
+const TAB_ORDER: TabId[] = ['por-enviar', 'enviados'];
 
 function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString('es-AR', {
@@ -951,7 +954,7 @@ function EmptyState({ tab }: { tab: TabId }) {
 // ==================== MAIN PAGE ====================
 
 export default function GestionPage() {
-  const [activeTab, setActiveTab] = useState<TabId>('por-preparar');
+  const [activeTab, setActiveTab] = useState<TabId>('por-enviar');
   const [orders, setOrders] = useState<OrderData[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -982,6 +985,12 @@ export default function GestionPage() {
   useEffect(() => {
     fetchData(activeTab);
   }, [activeTab, fetchData]);
+
+  // Deep-link desde el Home (?tab=por-enviar|enviados).
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab');
+    if (t === 'por-enviar' || t === 'enviados') setActiveTab(t);
+  }, []);
 
   async function handleResolveFaltante(orderId: string, resolution: string, notes: string) {
     setActionError('');

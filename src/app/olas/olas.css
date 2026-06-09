@@ -132,3 +132,17 @@
 .olas-root .center { text-align: center; }
 .olas-root .spin { width: 28px; height: 28px; border: 3px solid var(--soft); border-top-color: var(--pink); border-radius: 999px; animation: olasspin .7s linear infinite; margin: 40px auto; }
 @keyframes olasspin { to { transform: rotate(360deg) } }
+
+/* ---- Home del operador (Inicio) ---- */
+.olas-root .greet { font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+.olas-root .func-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.olas-root .func { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 15px; box-shadow: 0 1px 2px rgba(16,24,40,.05); display: flex; flex-direction: column; gap: 10px; min-height: 118px; cursor: pointer; text-align: left; font: inherit; color: var(--ink); }
+.olas-root .func:disabled { cursor: default; opacity: .65; }
+.olas-root .func .chip { width: 44px; height: 44px; border-radius: 13px; background: var(--pink-100); color: var(--pink-fg); display: flex; align-items: center; justify-content: center; }
+.olas-root .func .chip svg { width: 24px; height: 24px; }
+.olas-root .func .ft { font-weight: 800; font-size: 15px; letter-spacing: -.01em; }
+.olas-root .func .fs { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.olas-root .func .fcount { margin-top: auto; font-size: 12px; font-weight: 800; color: var(--pink-fg); display: flex; align-items: center; gap: 5px; }
+.olas-root .resolve-card { display: flex; align-items: center; gap: 13px; padding: 15px; border-radius: var(--r); background: #fffbeb; border: 1px solid #fde68a; cursor: pointer; width: 100%; text-align: left; font: inherit; }
+.olas-root .resolve-card .ic { width: 46px; height: 46px; border-radius: 13px; background: #fef3c7; color: var(--warn); display: flex; align-items: center; justify-content: center; flex: none; }
+.olas-root .resolve-card .ic svg { width: 24px; height: 24px; }
