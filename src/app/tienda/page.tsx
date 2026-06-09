@@ -74,19 +74,6 @@ function Svg({ d, s = 18, c }: { d: React.ReactNode; s?: number; c?: string }) {
   return <svg className="i" viewBox="0 0 24 24" style={{ width: s, height: s, color: c }}>{d}</svg>;
 }
 
-function Keypad({ onDigit, onBack, right }: { onDigit: (d: string) => void; onBack: () => void; right: React.ReactNode }) {
-  return (
-    <div className="keypad">
-      {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
-        <button key={d} className="key" onClick={() => onDigit(d)}>{d}</button>
-      ))}
-      <button className="key alt" onClick={onBack}><Svg d={P.back} s={20} /></button>
-      <button className="key" onClick={() => onDigit('0')}>0</button>
-      {right}
-    </div>
-  );
-}
-
 export default function TiendaPage() {
   const router = useRouter();
   const { toast, show } = useToast();
@@ -243,19 +230,23 @@ export default function TiendaPage() {
             <div style={{ fontSize: 19, fontWeight: 800 }}>Portal de Tienda</div>
             <div className="muted" style={{ fontSize: 13.5, marginTop: 3 }}>Ingresá el PIN de tu sucursal</div>
           </div>
-          <div className="pin-dots">
-            {Array.from({ length: Math.max(4, pin.length) }).map((_, i) => (
-              <span key={i} className={`pin-dot${i < pin.length ? ' on' : ''}`} />
-            ))}
-          </div>
+          <input
+            className="ta"
+            type="tel"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            autoFocus
+            value={pin}
+            onChange={(e) => { setAuthError(''); setPin(e.target.value.replace(/\D/g, '').slice(0, 6)); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') submitPin(); }}
+            placeholder="••••••"
+            style={{ maxWidth: 260, textAlign: 'center', fontSize: 26, letterSpacing: '.4em', fontWeight: 800 }}
+          />
           {authError && <div className="toast err">{authError}</div>}
-          <div style={{ width: '100%', maxWidth: 260 }}>
-            <Keypad
-              onDigit={(d) => { setAuthError(''); setPin((p) => (p.length < 6 ? p + d : p)); }}
-              onBack={() => setPin((p) => p.slice(0, -1))}
-              right={<button className="key go" onClick={submitPin} disabled={authLoading}><Svg d={P.check} s={24} /></button>}
-            />
-          </div>
+          <button className="btn btn-primary btn-block btn-lg" style={{ maxWidth: 260 }} onClick={submitPin} disabled={authLoading || pin.length < 4}>
+            {authLoading ? 'Verificando…' : 'Ingresar'}
+          </button>
           <button className="btn btn-ghost" onClick={() => router.push('/')}>Volver al inicio</button>
         </div>
       </div>
@@ -406,7 +397,14 @@ export default function TiendaPage() {
           </div>
           <div className={`searchbar${q ? '' : ' idle'}`}>
             <Svg d={mode === 'dni' ? P.user : P.tag} c={q ? 'var(--pink)' : 'var(--muted)'} />
-            <input value={mode === 'dni' ? fmtDni(q) : q} readOnly placeholder={mode === 'dni' ? 'Ingresá el DNI…' : 'N° de pedido…'} />
+            <input
+              type="tel"
+              inputMode="numeric"
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value.replace(/\D/g, '').slice(0, 10))}
+              placeholder={mode === 'dni' ? 'Ingresá el DNI…' : 'N° de pedido…'}
+            />
             {q && <button onClick={() => setQuery('')} style={{ border: 'none', background: 'var(--soft)', width: 28, height: 28, borderRadius: 99, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', cursor: 'pointer', flex: 'none' }}><Svg d={P.x} s={15} /></button>}
           </div>
 
@@ -451,11 +449,6 @@ export default function TiendaPage() {
             )
           )}
 
-          <Keypad
-            onDigit={(d) => setQuery((p) => (p.length < 10 ? p + d : p))}
-            onBack={() => setQuery((p) => p.slice(0, -1))}
-            right={<button className="key go"><Svg d={P.search} s={20} /></button>}
-          />
         </div>
         <Toast toast={toast} />
       </div>
