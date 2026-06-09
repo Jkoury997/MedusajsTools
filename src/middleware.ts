@@ -26,6 +26,7 @@ const STORE_TOKEN_PATHS = [
 const GESTION_PATHS = [
   '/gestion',
   '/olas',
+  '/faltantes',
   '/api/gestion',
   '/api/picking/waves',
   '/api/picking/ml-label',

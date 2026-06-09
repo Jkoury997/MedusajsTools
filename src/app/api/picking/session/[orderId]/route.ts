@@ -7,6 +7,13 @@ interface RouteParams {
   params: Promise<{ orderId: string }>;
 }
 
+// Olas obligatorio: el armado individual (per-order) está deshabilitado.
+// Las sesiones de preparación se crean por Olas (/api/picking/waves/*). En este
+// endpoint solo permitimos DEVOLVER una sesión ya existente (para no dejar
+// in_progress viejas sin poder cerrar), pero NO crear sesiones nuevas.
+// Para reactivar el armado per-order, poner esto en true.
+const PER_ORDER_PICKING_ENABLED: boolean = false;
+
 // GET /api/picking/session/:orderId - Estado del picking
 // ?includeCompleted=true para incluir sesiones completadas
 export async function GET(req: NextRequest, { params }: RouteParams) {
@@ -124,6 +131,14 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
           elapsedSeconds: elapsed,
         },
       });
+    }
+
+    // Bloqueo duro del armado individual: no se crean sesiones nuevas por acá.
+    if (!PER_ORDER_PICKING_ENABLED) {
+      return NextResponse.json(
+        { success: false, error: 'El armado individual está deshabilitado. Preparalo por Picking por Olas.' },
+        { status: 403 }
+      );
     }
 
     // Crear nueva sesión
