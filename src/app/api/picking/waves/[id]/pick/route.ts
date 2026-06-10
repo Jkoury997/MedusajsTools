@@ -5,7 +5,7 @@ import { requireSession } from '@/lib/session';
 import { errorResponse, HttpError } from '@/lib/http';
 import { audit } from '@/lib/audit';
 import { PickingWave } from '@/lib/entities';
-import { serializeWave, attachLineDetails } from '@/lib/wave';
+import { serializeWave, attachLineDetails, resolveScanField, matchesScan } from '@/lib/wave';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -36,14 +36,12 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         throw new HttpError(400, `La ola está en estado "${wave.status}", no se puede recolectar`);
       }
 
-      const line = wave.lines
-        .getItems()
-        .find(
-          (l) =>
-            (!!l.barcode && l.barcode === code) ||
-            (!!l.sku && l.sku === code) ||
-            (!!l.variantId && l.variantId === code)
-        );
+      // El barcode es el identificador único: matcheamos primero por barcode y
+      // solo caemos a variantId si el código no es ningún barcode. Nunca por SKU
+      // (se repite entre productos distintos).
+      const lines = wave.lines.getItems();
+      const field = resolveScanField(lines, code);
+      const line = field ? lines.find(matchesScan(field, code)) : undefined;
 
       if (!line) {
         throw new HttpError(400, `El código "${code}" no pertenece a esta ola`);

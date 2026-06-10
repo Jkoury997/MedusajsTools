@@ -22,6 +22,37 @@ export function isValidStation(id: string): id is StationId {
   return (STATIONS as readonly string[]).includes(id);
 }
 
+/**
+ * Identificación de un artículo escaneado dentro de una ola (recolección y mesa).
+ *
+ * El BARCODE es el identificador ÚNICO del artículo: es lo que diferencia un
+ * producto de otro, así que un código escaneado se matchea SIEMPRE primero por
+ * barcode. Solo si el código no coincide con NINGÚN barcode de la ola se cae a
+ * `variantId` (también único por variante).
+ *
+ * El SKU NO se usa para matchear: puede repetirse entre productos distintos
+ * (mismo SKU en variantes/artículos diferentes). Cuando el barcode de un
+ * artículo coincidía con el SKU de otro, el escaneo caía en el producto
+ * equivocado y se clasificaba a la letra de otro pedido (bug de "artículos que
+ * nada que ver" en la clasificación).
+ */
+export type ScannableCode = { barcode?: string; sku?: string; variantId?: string };
+
+/** Campo por el que matchea un código escaneado, con prioridad barcode > variantId (nunca SKU). */
+export function resolveScanField(
+  candidates: ScannableCode[],
+  code: string,
+): 'barcode' | 'variantId' | null {
+  if (candidates.some((c) => !!c.barcode && c.barcode === code)) return 'barcode';
+  if (candidates.some((c) => !!c.variantId && c.variantId === code)) return 'variantId';
+  return null;
+}
+
+/** Predicado que matchea un artículo por el campo ya resuelto (barcode o variantId). */
+export function matchesScan(field: 'barcode' | 'variantId', code: string) {
+  return (x: ScannableCode) => !!x[field] && x[field] === code;
+}
+
 /** Forma mínima de un ítem de pedido de Medusa que usamos para consolidar. */
 interface OrderItemLike {
   id: string;
