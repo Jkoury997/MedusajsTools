@@ -1,4 +1,5 @@
 import { escapeHtml } from './store-label';
+import { buildQRUrl, buildInStoreUrl } from './whatsapp';
 
 /**
  * Etiqueta de envío de un pedido dentro de una ola (put-to-wall). A diferencia
@@ -48,6 +49,9 @@ html, body { font-family: Arial, sans-serif; color: #000; -webkit-print-color-ad
 .cash { border: 2pt solid #000; padding: 2mm; text-align: center; margin-bottom: 2mm; }
 .cash b { font-size: 11pt; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; display: block; }
 .cash i { font-style: normal; font-size: 8pt; font-weight: 700; display: block; margin-top: 1mm; }
+.qr { text-align: center; margin-top: 1.5mm; }
+.qr img { width: 30mm; height: 30mm; border: 1pt solid #aaa; border-radius: 1.5mm; padding: 1mm; }
+.qr p { font-size: 6pt; color: #444; margin-top: 1mm; line-height: 1.25; }
 .ft { position: absolute; bottom: 3mm; left: 3mm; right: 3mm; border-top: 0.5pt solid #aaa; padding-top: 1.5mm; display: flex; justify-content: space-between; font-size: 6pt; color: #777; }
 `;
 
@@ -55,6 +59,11 @@ html, body { font-family: Arial, sans-serif; color: #000; -webkit-print-color-ad
 function labelBlock(d: WaveLabelData): string {
   const dateStr = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const destLabel = d.destinationKind === 'tienda' ? 'Retirar en' : 'Enviar por';
+  // QR de WhatsApp para avisarle a la clienta que el pedido ya está en la tienda
+  // para retirar. Solo si hay teléfono.
+  const whatsappUrl = d.customerPhone ? buildInStoreUrl(d.customerPhone, d.orderDisplayId) : '';
+  const qrUrl = whatsappUrl ? buildQRUrl(whatsappUrl, 200) : '';
+  const qrCaption = 'Escaneá para avisar que el<br>pedido ya está en la tienda';
   return `<div class="z">
   <div class="hd">
     <div class="brand">MARCELA KOURY<small>Etiqueta de envío</small></div>
@@ -75,6 +84,7 @@ function labelBlock(d: WaveLabelData): string {
       : ''}
     ${d.isML && d.mlTracking ? `<i>Tracking ML: ${escapeHtml(d.mlTracking)}</i>` : ''}
   </div>
+  ${qrUrl ? `<div class="qr"><img src="${qrUrl}" alt="QR" /><p>${qrCaption}</p></div>` : ''}
   <div class="ft">
     <span>Ola #${d.waveNumber} · ${escapeHtml(d.stationLabel)} · Letra ${escapeHtml(d.letter)}</span>
     <span>${dateStr}</span>
@@ -95,7 +105,23 @@ export function buildWaveLabelsHtml(labels: WaveLabelData[]): string {
 </head>
 <body>
 ${blocks}
-<script>setTimeout(function(){ window.print(); }, 250);</script>
+<script>
+// Esperamos a que carguen todos los QR (imágenes de un servicio externo) antes
+// de imprimir; si no, saldrían en blanco. Con tope de 4s por si alguno no carga.
+(function () {
+  var imgs = Array.prototype.slice.call(document.querySelectorAll('.qr img'));
+  var pending = imgs.filter(function (i) { return !i.complete; }).length;
+  var done = false;
+  function go() { if (done) return; done = true; setTimeout(function () { window.print(); }, 100); }
+  if (pending === 0) { setTimeout(go, 250); return; }
+  imgs.forEach(function (i) {
+    if (i.complete) return;
+    var fin = function () { pending--; if (pending <= 0) go(); };
+    i.onload = fin; i.onerror = fin;
+  });
+  setTimeout(go, 4000);
+})();
+</script>
 </body>
 </html>`;
 }

@@ -21,3 +21,13 @@ export function buildWhatsAppUrl(phone: string, message: string): string {
 export function buildPickupReadyUrl(phone: string, orderDisplayId: number, storeName: string): string {
   return buildWhatsAppUrl(phone, buildPickupReadyMessage(orderDisplayId, storeName));
 }
+
+/** Mensaje "pedido ya está en la tienda para retirar". */
+export function buildInStoreMessage(orderDisplayId: number): string {
+  return `Hola! Te escribimos de Marcela Koury. Tu pedido #${orderDisplayId} ya está en la tienda para que lo retires. Te esperamos!`;
+}
+
+/** URL de WhatsApp para avisar que un pedido ya está en la tienda. */
+export function buildInStoreUrl(phone: string, orderDisplayId: number): string {
+  return buildWhatsAppUrl(phone, buildInStoreMessage(orderDisplayId));
+}
