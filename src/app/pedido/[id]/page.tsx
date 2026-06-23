@@ -261,6 +261,30 @@ function OlasPickingNotice() {
   );
 }
 
+// Aviso para un pedido YA armado que Medusa dejó en partially_fulfilled (p. ej.
+// faltante compensado con voucher): no hay que volver a prepararlo.
+function AlreadyPreparedNotice() {
+  return (
+    <div className="print:hidden mt-4 bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
+      <div className="w-14 h-14 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-3 text-green-600">
+        <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      </div>
+      <h3 className="text-lg font-bold text-gray-900">Pedido ya preparado</h3>
+      <p className="text-sm text-gray-500 mt-1 mb-4">
+        Este pedido ya fue armado y el faltante quedó resuelto. No hace falta volver a prepararlo: gestionalo desde Despacho.
+      </p>
+      <Link
+        href="/despacho"
+        className="inline-flex items-center justify-center px-5 py-2.5 bg-brand-500 text-white rounded-xl font-bold hover:bg-brand-600 transition-colors"
+      >
+        Ir a Despacho
+      </Link>
+    </div>
+  );
+}
+
 function getCustomerName(order: Order): string {
   // Intentar obtener nombre del customer
   if (order.customer?.first_name && order.customer?.last_name) {
@@ -437,15 +461,23 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
 
   // Verificar si hay una sesión completada con faltantes para este pedido
   let hasCompletedSessionWithFaltantes = false;
+  // Si ya existe CUALQUIER sesión completada, el pedido ya fue armado: no se debe
+  // ofrecer "armar de nuevo" aunque Medusa lo deje en partially_fulfilled (p. ej.
+  // un faltante compensado con voucher).
+  let hasCompletedSession = false;
   const em = await getEm();
   try {
     const completedSession = await em.findOne(PickingSession, {
       orderId: order.id,
       status: 'completed',
-      items: { quantityMissing: { $gt: 0 } },
     });
+    hasCompletedSession = !!completedSession;
 
-    if (completedSession && ['pending', 'waiting'].includes(completedSession.faltanteResolution || '')) {
+    if (
+      completedSession &&
+      completedSession.totalMissing > 0 &&
+      ['pending', 'waiting'].includes(completedSession.faltanteResolution || '')
+    ) {
       hasCompletedSessionWithFaltantes = true;
     }
   } catch (e) {
@@ -668,6 +700,10 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
             orderItems={sortedItems}
             fulfillmentStatus={fulfillmentStatus}
           />
+        ) : hasCompletedSession ? (
+          /* Ya pickeado (p. ej. faltante compensado con voucher) pero Medusa
+             quedó en partially_fulfilled: NO ofrecer armarlo de nuevo. */
+          <AlreadyPreparedNotice />
         ) : (
           /* Armado individual deshabilitado: se prepara por Olas */
           <OlasPickingNotice />
