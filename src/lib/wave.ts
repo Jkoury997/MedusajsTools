@@ -7,8 +7,9 @@
 import { getPaidOrders, getShippingOptionCodeMap, getVariantDetails } from './medusa';
 import { classifyShippingName, type ShippingCategory } from './shipping';
 import { config } from './config';
+import { getEm } from './db';
 import type { EntityManager } from '@mikro-orm/postgresql';
-import { PickingWave } from './entities';
+import { PickingWave, PickingSession } from './entities';
 
 /** Mesas físicas de clasificación disponibles (put-to-wall). */
 export const STATIONS = ['mesa-1', 'mesa-2'] as const;
@@ -196,7 +197,8 @@ export function compareWavePriority(a: WaveOrderSource, b: WaveOrderSource): num
  * PRIORIDAD de grupo (envío rápido → ML → tienda → correo → vía cargo →
  * expreso → fábrica → el resto) y, dentro de cada grupo, del más antiguo al más
  * nuevo. El fulfillment se crea al cerrar la ola, así que la ola se arma sobre
- * pedidos todavía sin preparar.
+ * pedidos todavía sin preparar. Se EXCLUYEN los pedidos que ya tienen una sesión
+ * de pickeo (en curso o completada) para que no reaparezcan en el pool.
  */
 export async function getPendingOrders(): Promise<WaveOrderSource[]> {
   const [preparar, codeMap] = await Promise.all([
@@ -205,7 +207,24 @@ export async function getPendingOrders(): Promise<WaveOrderSource[]> {
   ]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const orders = (preparar.orders as any[]).filter((order) => (order.items?.length || 0) > 0);
+  const candidates = (preparar.orders as any[]).filter((order) => (order.items?.length || 0) > 0);
+
+  // Excluir los pedidos que YA tienen una sesión de pickeo (en curso o
+  // completada): ya fueron armados o se están armando. Incluye los faltantes
+  // resueltos con voucher/espera, que en Medusa pueden quedar como
+  // partially_fulfilled y, sin este filtro, reaparecerían en el pool para
+  // "armarlos de nuevo". Espeja la lógica de la pestaña "por preparar" de gestión.
+  const candidateIds = candidates.map((o) => o.id as string);
+  const em = await getEm();
+  const sessions = candidateIds.length
+    ? await em.find(PickingSession, {
+        orderId: { $in: candidateIds },
+        status: { $in: ['in_progress', 'completed'] },
+      })
+    : [];
+  const pickedOrderIds = new Set(sessions.map((s) => s.orderId));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const orders = candidates.filter((order: any) => !pickedOrderIds.has(order.id));
 
   // Enriquecer cada pedido con el type.code de su shipping option (de un fetch
   // aparte, cacheado), para que waveGroup lo use sin expandir la relación.

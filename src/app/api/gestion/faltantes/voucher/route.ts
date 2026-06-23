@@ -53,9 +53,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Crea el fulfillment en Medusa SOLO con lo que se pickeó (los faltantes se
-    // compensan con el voucher, no se van a enviar). Cierra el cumplimiento para
-    // que el pedido pase a "Por enviar". Idempotente vía fulfillmentStatus.
+    // El voucher COMPENSA el faltante: se toma como si el faltante TAMBIÉN se
+    // hubiera pickeado, de modo que el pedido queda COMPLETO (fulfilled) en
+    // Medusa y NO vuelve a aparecer para armar (ni en el pool de olas ni en el
+    // detalle del pedido). Se cumple la cantidad PEDIDA de cada línea (pickeado
+    // + faltante). Idempotente vía fulfillmentStatus.
     async function ensureFulfillment(): Promise<{ created: boolean; error?: string }> {
       if (session!.fulfillmentStatus === 'created') return { created: true };
       try {
@@ -63,10 +65,12 @@ export async function POST(req: NextRequest) {
         const data = await medusaRequest<{ order: any }>(`/admin/orders/${orderId}?fields=+items.*`);
         const fulfillmentItems: { id: string; quantity: number }[] = [];
         for (const it of session!.items.getItems()) {
-          if (it.quantityPicked <= 0) continue;
+          // Cantidad pedida = pickeado + faltante (el faltante se toma como pickeado).
+          const quantity = it.quantityRequired;
+          if (quantity <= 0) continue;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const medusaItem = data.order.items?.find((i: any) => i.id === it.lineItemId);
-          if (medusaItem) fulfillmentItems.push({ id: medusaItem.id, quantity: it.quantityPicked });
+          if (medusaItem) fulfillmentItems.push({ id: medusaItem.id, quantity });
         }
         if (fulfillmentItems.length === 0) return { created: false };
         await createFulfillmentForOrder(orderId, fulfillmentItems);
