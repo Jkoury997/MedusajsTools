@@ -689,7 +689,13 @@ export default function PickingInterface({ orderId, orderDisplayId, orderItems, 
 
           {completionResult.fulfillmentCreated ? (
             <p className="text-sm text-green-700 font-medium">
-              Pedido marcado como preparado en el sistema
+              {completionResult.totalMissing && completionResult.totalMissing > 0
+                ? 'Lo pickeado quedó preparado en el sistema (cumplimiento parcial); los faltantes se cumplen al recibirlos'
+                : 'Pedido marcado como preparado en el sistema'}
+            </p>
+          ) : completionResult.totalMissing && completionResult.totalMissing > 0 ? (
+            <p className="text-sm text-gray-600">
+              Sin items para despachar: todo el pedido quedó como faltante
             </p>
           ) : (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2">

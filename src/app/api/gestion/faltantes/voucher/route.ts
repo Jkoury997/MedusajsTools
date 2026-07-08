@@ -3,7 +3,7 @@ import { getEm } from '@/lib/db';
 import { PickingSession } from '@/lib/entities';
 import { audit } from '@/lib/audit';
 import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
-import { createFulfillmentForOrder } from '@/lib/fulfillment';
+import { fulfillRemainingForOrder } from '@/lib/fulfillment';
 import { requireRole } from '@/lib/session';
 import { errorResponse } from '@/lib/http';
 import { randomBytes } from 'crypto';
@@ -53,23 +53,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Crea el fulfillment en Medusa SOLO con lo que se pickeó (los faltantes se
-    // compensan con el voucher, no se van a enviar). Cierra el cumplimiento para
-    // que el pedido pase a "Por enviar". Idempotente vía fulfillmentStatus.
+    // Cierra el cumplimiento en Medusa SOLO con lo que se pickeó (los faltantes
+    // se compensan con el voucher, no se van a enviar) para que el pedido pase a
+    // "Por enviar". Se cumple el REMANENTE contra lo ya cumplido: si el parcial
+    // de lo pickeado ya se creó al completar el picking, no crea nada.
     async function ensureFulfillment(): Promise<{ created: boolean; error?: string }> {
       if (session!.fulfillmentStatus === 'created') return { created: true };
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const data = await medusaRequest<{ order: any }>(`/admin/orders/${orderId}?fields=+items.*`);
-        const fulfillmentItems: { id: string; quantity: number }[] = [];
+        const targetByLineItem = new Map<string, number>();
         for (const it of session!.items.getItems()) {
-          if (it.quantityPicked <= 0) continue;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const medusaItem = data.order.items?.find((i: any) => i.id === it.lineItemId);
-          if (medusaItem) fulfillmentItems.push({ id: medusaItem.id, quantity: it.quantityPicked });
+          if (it.quantityPicked > 0) targetByLineItem.set(it.lineItemId, it.quantityPicked);
         }
-        if (fulfillmentItems.length === 0) return { created: false };
-        await createFulfillmentForOrder(orderId, fulfillmentItems);
+        if (targetByLineItem.size === 0) return { created: false };
+        await fulfillRemainingForOrder(orderId, targetByLineItem);
         session!.fulfillmentStatus = 'created';
         invalidateOrdersCache();
         return { created: true };

@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEm } from '@/lib/db';
 import { PickingSession } from '@/lib/entities';
 import { audit } from '@/lib/audit';
-import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
-import { createFulfillmentForOrder } from '@/lib/fulfillment';
+import { invalidateOrdersCache } from '@/lib/medusa';
+import { fulfillRemainingForOrder } from '@/lib/fulfillment';
 import { requireRole } from '@/lib/session';
 import { errorResponse } from '@/lib/http';
 import { LockMode } from '@mikro-orm/core';
@@ -51,8 +51,10 @@ export async function POST(req: NextRequest) {
       session.faltanteResolvedAt = new Date();
       session.faltanteNotes = notes || '';
 
-      // Si es voucher o resolved, crear fulfillment solo con lo que se pickeó
-      // (los faltantes no se van a recibir)
+      // Si es voucher o resolved, cerrar el cumplimiento solo con lo que se
+      // pickeó (los faltantes no se van a recibir). Se cumple el REMANENTE
+      // contra lo ya cumplido: si el parcial de lo pickeado ya se creó al
+      // completar el picking, no crea nada.
       let fulfillmentCreated = false;
       let fulfillmentError: string | undefined;
       if (resolution === 'voucher' || resolution === 'resolved') {
@@ -61,26 +63,15 @@ export async function POST(req: NextRequest) {
           fulfillmentCreated = true;
         } else {
           try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const orderData = await medusaRequest<{ order: any }>(
-              `/admin/orders/${orderId}?fields=+items.*`
-            );
-            const order = orderData.order;
-
-            const fulfillmentItems: { id: string; quantity: number }[] = [];
+            const targetByLineItem = new Map<string, number>();
             for (const sessionItem of session.items.getItems()) {
-              if (sessionItem.quantityPicked <= 0) continue;
-              const medusaItem = order.items?.find((i: any) => i.id === sessionItem.lineItemId);
-              if (medusaItem) {
-                fulfillmentItems.push({
-                  id: medusaItem.id,
-                  quantity: sessionItem.quantityPicked,
-                });
+              if (sessionItem.quantityPicked > 0) {
+                targetByLineItem.set(sessionItem.lineItemId, sessionItem.quantityPicked);
               }
             }
 
-            if (fulfillmentItems.length > 0) {
-              await createFulfillmentForOrder(orderId, fulfillmentItems);
+            if (targetByLineItem.size > 0) {
+              await fulfillRemainingForOrder(orderId, targetByLineItem);
               fulfillmentCreated = true;
               session.fulfillmentStatus = 'created';
               invalidateOrdersCache();

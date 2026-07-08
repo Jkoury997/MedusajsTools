@@ -8,7 +8,7 @@
 import type { EntityManager } from '@mikro-orm/postgresql';
 import { PickingSession, PickingItem, User } from './entities';
 import { audit } from './audit';
-import { medusaRequest } from './medusa';
+import { medusaRequest, invalidateOrdersCache } from './medusa';
 import { createFulfillmentForOrder } from './fulfillment';
 
 export interface FinalizeResult {
@@ -101,9 +101,10 @@ export async function finalizeWaveOrder(
     }
 
     // Hay una sesión (p. ej. iniciada en el flujo individual al imprimir) pero
-    // SIN fulfillment. Si el pedido no quedó con faltantes, creamos el
-    // cumplimiento ahora: este es el caso "dice OK pero no genera el fulfillment".
-    if (!hasMissing) {
+    // SIN fulfillment. Si hay algo clasificado, creamos el cumplimiento ahora
+    // (parcial si quedaron faltantes): este es el caso "dice OK pero no genera
+    // el fulfillment".
+    if (totalPicked > 0) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const picked = new Map<string, number>(items.map((i: any) => [i.lineItemId, i.quantitySorted]));
@@ -111,13 +112,14 @@ export async function finalizeWaveOrder(
         existing.fulfillmentStatus = 'created';
         await em.flush();
         base.fulfillmentCreated = true;
+        invalidateOrdersCache();
         audit({
           action: 'fulfillment_create',
           userName: user.name,
           userId: user.id,
           orderId,
           orderDisplayId: waveOrder.orderDisplayId,
-          details: `Fulfillment creado sobre sesión existente (ola #${wave.displayNumber}, letra ${waveOrder.letter})`,
+          details: `Fulfillment${hasMissing ? ' parcial' : ''} creado sobre sesión existente (ola #${wave.displayNumber}, letra ${waveOrder.letter})`,
         });
       } catch (error) {
         base.fulfillmentError = error instanceof Error ? error.message : 'Error al crear fulfillment';
@@ -135,16 +137,18 @@ export async function finalizeWaveOrder(
     return { ...base, skipped };
   }
 
-  // PASO 1: fulfillment (antes de materializar la sesión). Si hay faltantes,
-  // no se crea ahora (se crea cuando se reciba todo, vía flujo de faltantes).
+  // PASO 1: fulfillment (antes de materializar la sesión). Se crea SIEMPRE con
+  // lo clasificado, haya o no faltantes: con faltantes queda un cumplimiento
+  // PARCIAL y el resto se cumple al resolverlos (recepción vía flujo de faltantes).
   let fulfillmentStatus: 'none' | 'created' = 'none';
-  if (!hasMissing) {
+  if (totalPicked > 0) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const picked = new Map<string, number>(items.map((i: any) => [i.lineItemId, i.quantitySorted]));
       await createFulfillmentInMedusa(orderId, picked);
       fulfillmentStatus = 'created';
       base.fulfillmentCreated = true;
+      invalidateOrdersCache();
     } catch (error) {
       const fulfillmentError = error instanceof Error ? error.message : 'Error al crear fulfillment';
       base.fulfillmentError = fulfillmentError;
@@ -198,7 +202,9 @@ export async function finalizeWaveOrder(
       userId: user.id,
       orderId,
       orderDisplayId: waveOrder.orderDisplayId,
-      details: `Fulfillment creado (ola #${wave.displayNumber}, letra ${waveOrder.letter})`,
+      details: hasMissing
+        ? `Fulfillment parcial creado (ola #${wave.displayNumber}, letra ${waveOrder.letter}, ${totalMissing} faltantes pendientes)`
+        : `Fulfillment creado (ola #${wave.displayNumber}, letra ${waveOrder.letter})`,
     });
   }
 
