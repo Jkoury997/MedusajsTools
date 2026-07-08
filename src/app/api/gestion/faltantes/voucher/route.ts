@@ -53,16 +53,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Cierra el cumplimiento en Medusa SOLO con lo que se pickeó (los faltantes
-    // se compensan con el voucher, no se van a enviar) para que el pedido pase a
-    // "Por enviar". Se cumple el REMANENTE contra lo ya cumplido: si el parcial
-    // de lo pickeado ya se creó al completar el picking, no crea nada.
+    // Cierra el cumplimiento COMPLETO en Medusa: lo pickeado + los faltantes.
+    // Los faltantes se compensan con el voucher (no se van a enviar) pero se
+    // registran como cumplidos para que el pedido quede "Cumplido" en Medusa y
+    // pase a "Por enviar", en vez de quedar parcial para siempre. Se cumple el
+    // REMANENTE contra lo ya cumplido (p. ej. el parcial de lo pickeado creado
+    // al completar el picking), así que es idempotente.
     async function ensureFulfillment(): Promise<{ created: boolean; error?: string }> {
-      if (session!.fulfillmentStatus === 'created') return { created: true };
       try {
         const targetByLineItem = new Map<string, number>();
         for (const it of session!.items.getItems()) {
-          if (it.quantityPicked > 0) targetByLineItem.set(it.lineItemId, it.quantityPicked);
+          const totalQty = it.quantityPicked + (it.quantityMissing || 0);
+          if (totalQty > 0) targetByLineItem.set(it.lineItemId, totalQty);
         }
         if (targetByLineItem.size === 0) return { created: false };
         await fulfillRemainingForOrder(orderId, targetByLineItem);
@@ -139,7 +141,7 @@ export async function POST(req: NextRequest) {
     session.faltanteResolvedAt = new Date();
     session.faltanteNotes = `Voucher: ${promotion.code} - Valor: $${roundedValue}${notes ? ` - ${notes}` : ''}`;
 
-    // Cerrar el cumplimiento en Medusa con lo pickeado (el faltante va por voucher).
+    // Cerrar el cumplimiento COMPLETO en Medusa (el faltante va por voucher).
     const fulfillment = await ensureFulfillment();
     await em.flush();
 

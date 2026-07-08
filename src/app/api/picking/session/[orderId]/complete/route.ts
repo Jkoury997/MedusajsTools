@@ -72,7 +72,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     // PASO 1: Crear fulfillment en Medusa (ANTES de marcar la sesión como completada)
     // Se crea SIEMPRE con lo pickeado, haya o no faltantes: con faltantes queda
     // un cumplimiento PARCIAL (lo que está, listo para enviar/gestionar) y el
-    // resto se cumple al resolver los faltantes (recepción de mercadería).
+    // resto se cumple al resolver los faltantes (recepción o voucher).
     let fulfillmentCreated = false;
     let fulfillmentError = '';
     // Indica si se intentó crear un fulfillment (hay items a despachar) y éste falló

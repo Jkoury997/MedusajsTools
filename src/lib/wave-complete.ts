@@ -139,7 +139,7 @@ export async function finalizeWaveOrder(
 
   // PASO 1: fulfillment (antes de materializar la sesión). Se crea SIEMPRE con
   // lo clasificado, haya o no faltantes: con faltantes queda un cumplimiento
-  // PARCIAL y el resto se cumple al resolverlos (recepción vía flujo de faltantes).
+  // PARCIAL y el resto se cumple al resolverlos (recepción o voucher).
   let fulfillmentStatus: 'none' | 'created' = 'none';
   if (totalPicked > 0) {
     try {

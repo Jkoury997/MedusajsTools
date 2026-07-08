@@ -51,36 +51,34 @@ export async function POST(req: NextRequest) {
       session.faltanteResolvedAt = new Date();
       session.faltanteNotes = notes || '';
 
-      // Si es voucher o resolved, cerrar el cumplimiento solo con lo que se
-      // pickeó (los faltantes no se van a recibir). Se cumple el REMANENTE
-      // contra lo ya cumplido: si el parcial de lo pickeado ya se creó al
-      // completar el picking, no crea nada.
+      // Si es voucher o resolved, cerrar el cumplimiento COMPLETO: lo pickeado
+      // + los faltantes. Los faltantes no se van a recibir (se compensan con el
+      // voucher o se resuelven por fuera) pero se registran como cumplidos para
+      // que el pedido quede "Cumplido" en Medusa y no parcial para siempre.
+      // Se cumple el REMANENTE contra lo ya cumplido (p. ej. el parcial de lo
+      // pickeado creado al completar el picking), así que es idempotente.
       let fulfillmentCreated = false;
       let fulfillmentError: string | undefined;
       if (resolution === 'voucher' || resolution === 'resolved') {
-        // Guard de doble fulfillment: si ya hay uno creado, no crear otro.
-        if (session.fulfillmentStatus === 'created') {
-          fulfillmentCreated = true;
-        } else {
-          try {
-            const targetByLineItem = new Map<string, number>();
-            for (const sessionItem of session.items.getItems()) {
-              if (sessionItem.quantityPicked > 0) {
-                targetByLineItem.set(sessionItem.lineItemId, sessionItem.quantityPicked);
-              }
+        try {
+          const targetByLineItem = new Map<string, number>();
+          for (const sessionItem of session.items.getItems()) {
+            const totalQty = sessionItem.quantityPicked + (sessionItem.quantityMissing || 0);
+            if (totalQty > 0) {
+              targetByLineItem.set(sessionItem.lineItemId, totalQty);
             }
-
-            if (targetByLineItem.size > 0) {
-              await fulfillRemainingForOrder(orderId, targetByLineItem);
-              fulfillmentCreated = true;
-              session.fulfillmentStatus = 'created';
-              invalidateOrdersCache();
-            }
-          } catch (fulfillError) {
-            console.error('[Faltantes] Error creating fulfillment:', fulfillError);
-            session.fulfillmentStatus = 'failed';
-            fulfillmentError = fulfillError instanceof Error ? fulfillError.message : String(fulfillError);
           }
+
+          if (targetByLineItem.size > 0) {
+            await fulfillRemainingForOrder(orderId, targetByLineItem);
+            fulfillmentCreated = true;
+            session.fulfillmentStatus = 'created';
+            invalidateOrdersCache();
+          }
+        } catch (fulfillError) {
+          console.error('[Faltantes] Error creating fulfillment:', fulfillError);
+          session.fulfillmentStatus = 'failed';
+          fulfillmentError = fulfillError instanceof Error ? fulfillError.message : String(fulfillError);
         }
       }
 
