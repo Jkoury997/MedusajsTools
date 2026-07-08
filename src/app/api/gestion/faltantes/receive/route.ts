@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEm } from '@/lib/db';
 import { PickingSession } from '@/lib/entities';
 import { audit } from '@/lib/audit';
-import { medusaRequest, invalidateOrdersCache } from '@/lib/medusa';
-import { createFulfillmentForOrder } from '@/lib/fulfillment';
+import { invalidateOrdersCache } from '@/lib/medusa';
+import { fulfillRemainingForOrder } from '@/lib/fulfillment';
 import { requireRole } from '@/lib/session';
 import { errorResponse } from '@/lib/http';
 import { LockMode } from '@mikro-orm/core';
@@ -24,8 +24,8 @@ export async function GET(req: NextRequest) {
     }
 
     const missingItems = session.items.getItems()
-      .filter((i: any) => (i.quantityMissing || 0) > 0)
-      .map((i: any) => ({
+      .filter((i) => (i.quantityMissing || 0) > 0)
+      .map((i) => ({
         lineItemId: i.lineItemId,
         sku: i.sku || '',
         barcode: i.barcode || '',
@@ -74,12 +74,38 @@ export async function POST(req: NextRequest) {
         return { notFound: true as const };
       }
 
+      // Crea en Medusa el fulfillment del REMANENTE hasta pickeado + faltante:
+      // - Pedidos nuevos: el parcial de lo pickeado ya se creó al completar el
+      //   picking, así que acá se cumple solo lo recibido.
+      // - Pedidos viejos (sin parcial): el remanente es todo (pickeado + recibido).
+      // Idempotente: si no queda nada por cumplir, no crea nada y cuenta como creado.
+      const fulfillReceived = async (): Promise<{ created: boolean; error?: string }> => {
+        try {
+          const targetByLineItem = new Map<string, number>();
+          for (const sessionItem of session.items.getItems()) {
+            const totalQty = sessionItem.quantityPicked + (sessionItem.quantityMissing || 0);
+            if (totalQty > 0) targetByLineItem.set(sessionItem.lineItemId, totalQty);
+          }
+          await fulfillRemainingForOrder(orderId, targetByLineItem);
+          session.fulfillmentStatus = 'created';
+          invalidateOrdersCache();
+          return { created: true };
+        } catch (fulfillError) {
+          console.error('[Receive] Error creating fulfillment for received faltantes:', fulfillError);
+          session.fulfillmentStatus = 'failed';
+          return {
+            created: false,
+            error: fulfillError instanceof Error ? fulfillError.message : String(fulfillError),
+          };
+        }
+      };
+
       // Buscar el item faltante que coincida
       let matchedItem = null;
       for (const item of session.items.getItems()) {
         if ((item.quantityMissing || 0) <= 0) continue;
 
-        const received = (item as any).quantityReceived || 0;
+        const received = item.quantityReceived || 0;
         if (received >= (item.quantityMissing || 0)) continue; // Ya recibido todo
 
         if (lineItemId && item.lineItemId === lineItemId) {
@@ -96,18 +122,54 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Estado actual de items (para las respuestas)
+      const listMissingItems = () => session.items.getItems()
+        .filter((i) => (i.quantityMissing || 0) > 0)
+        .map((i) => ({
+          lineItemId: i.lineItemId,
+          sku: i.sku || '',
+          barcode: i.barcode || '',
+          quantityMissing: i.quantityMissing,
+          quantityReceived: i.quantityReceived || 0,
+        }));
+
       if (!matchedItem) {
+        // Sin item pendiente que coincida: puede ser un reintento con todo ya
+        // recibido pero el fulfillment pendiente/fallido (p. ej. Medusa caído
+        // en el escaneo anterior). Re-escanear cualquier item lo reintenta.
+        const missing = session.items.getItems().filter((i) => (i.quantityMissing || 0) > 0);
+        const allAlreadyReceived = missing.length > 0
+          && missing.every((i) => (i.quantityReceived || 0) >= (i.quantityMissing || 0));
+        if (allAlreadyReceived && session.fulfillmentStatus !== 'created') {
+          const retry = await fulfillReceived();
+          if (retry.created) {
+            audit({
+              action: 'item_missing',
+              userName: session.userName,
+              orderId,
+              orderDisplayId: session.orderDisplayId,
+              details: 'Reintento de fulfillment de faltantes recibidos - Fulfillment creado en Medusa',
+              metadata: { resolution: 'resolved', method: 'scan_retry', fulfillmentCreated: true },
+            });
+            return {
+              matched: null,
+              allReceived: true,
+              missingItems: listMissingItems(),
+              fulfillmentCreated: true,
+              fulfillmentError: undefined,
+            };
+          }
+        }
         return { noMatch: true as const };
       }
 
       // Incrementar quantityReceived
-      const currentReceived = (matchedItem as any).quantityReceived || 0;
-      (matchedItem as any).quantityReceived = currentReceived + 1;
+      matchedItem.quantityReceived = (matchedItem.quantityReceived || 0) + 1;
 
       // Verificar si todos los faltantes fueron recibidos
       const allReceived = session.items.getItems()
-        .filter(i => (i.quantityMissing || 0) > 0)
-        .every(i => ((i as any).quantityReceived || 0) >= (i.quantityMissing || 0));
+        .filter((i) => (i.quantityMissing || 0) > 0)
+        .every((i) => (i.quantityReceived || 0) >= (i.quantityMissing || 0));
 
       let fulfillmentCreated = false;
       let fulfillmentError: string | undefined;
@@ -117,45 +179,9 @@ export async function POST(req: NextRequest) {
         session.faltanteResolvedAt = new Date();
         session.faltanteNotes = (session.faltanteNotes || '') + ' | Mercadería recibida completa';
 
-        // Guard de doble fulfillment: solo crear si no se creó antes.
-        if (session.fulfillmentStatus === 'created') {
-          fulfillmentCreated = true;
-        } else {
-          // Crear UN SOLO fulfillment en Medusa con TODOS los items (pickeados + faltantes recibidos)
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const orderData = await medusaRequest<{ order: any }>(
-              `/admin/orders/${orderId}?fields=+items.*,+fulfillments.*`
-            );
-            const order = orderData.order;
-
-            // Construir fulfillment con cantidad total por item (picked + missing)
-            const fulfillmentItems: { id: string; quantity: number }[] = [];
-            for (const sessionItem of session.items.getItems()) {
-              const totalQty = sessionItem.quantityPicked + (sessionItem.quantityMissing || 0);
-              if (totalQty <= 0) continue;
-
-              const medusaItem = order.items?.find((i: any) => i.id === sessionItem.lineItemId);
-              if (medusaItem) {
-                fulfillmentItems.push({
-                  id: medusaItem.id,
-                  quantity: totalQty,
-                });
-              }
-            }
-
-            if (fulfillmentItems.length > 0) {
-              await createFulfillmentForOrder(orderId, fulfillmentItems);
-              fulfillmentCreated = true;
-              session.fulfillmentStatus = 'created';
-              invalidateOrdersCache();
-            }
-          } catch (fulfillError) {
-            console.error('[Receive] Error creating fulfillment for received faltantes:', fulfillError);
-            session.fulfillmentStatus = 'failed';
-            fulfillmentError = fulfillError instanceof Error ? fulfillError.message : String(fulfillError);
-          }
-        }
+        const fulfillment = await fulfillReceived();
+        fulfillmentCreated = fulfillment.created;
+        fulfillmentError = fulfillment.error;
 
         audit({
           action: 'item_missing',
@@ -167,23 +193,14 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // Estado actual de items
-      const missingItems = session.items.getItems()
-        .filter((i: any) => (i.quantityMissing || 0) > 0)
-        .map((i: any) => ({
-          lineItemId: i.lineItemId,
-          sku: i.sku || '',
-          barcode: i.barcode || '',
-          quantityMissing: i.quantityMissing,
-          quantityReceived: (i as any).quantityReceived || 0,
-        }));
+      const missingItems = listMissingItems();
 
       return {
         matched: {
           lineItemId: matchedItem.lineItemId,
           sku: matchedItem.sku,
           barcode: matchedItem.barcode,
-          quantityReceived: (matchedItem as any).quantityReceived,
+          quantityReceived: matchedItem.quantityReceived,
           quantityMissing: matchedItem.quantityMissing,
         },
         allReceived,

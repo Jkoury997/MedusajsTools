@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEm } from '@/lib/db';
 import { PickingSession, User } from '@/lib/entities';
 import { audit } from '@/lib/audit';
-import { medusaRequest } from '@/lib/medusa';
+import { invalidateOrdersCache } from '@/lib/medusa';
+import { fulfillRemainingForOrder } from '@/lib/fulfillment';
 
 interface RouteParams {
   params: Promise<{ orderId: string }>;
@@ -69,7 +70,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       .map(i => ({ lineItemId: i.lineItemId, sku: i.sku, barcode: i.barcode, quantityMissing: i.quantityMissing }));
 
     // PASO 1: Crear fulfillment en Medusa (ANTES de marcar la sesión como completada)
-    // Si hay faltantes, NO crear fulfillment ahora — se crea uno solo cuando se reciba todo
+    // Se crea SIEMPRE con lo pickeado, haya o no faltantes: con faltantes queda
+    // un cumplimiento PARCIAL (lo que está, listo para enviar/gestionar) y el
+    // resto se cumple al resolver los faltantes (recepción o voucher).
     let fulfillmentCreated = false;
     let fulfillmentError = '';
     // Indica si se intentó crear un fulfillment (hay items a despachar) y éste falló
@@ -77,57 +80,24 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
     // Idempotencia: si ya se creó el fulfillment previamente, no volver a crearlo
     const alreadyFulfilled = session.fulfillmentStatus === 'created';
+    const totalPickedQty = items.reduce((sum, i) => sum + i.quantityPicked, 0);
 
     if (alreadyFulfilled) {
       fulfillmentCreated = true;
-    } else if (!hasMissing) {
+    } else if (totalPickedQty > 0) {
       try {
-        // Obtener el pedido de Medusa para tener los datos de items
-        const orderData = await medusaRequest<{ order: any }>(
-          `/admin/orders/${orderId}?fields=+items.*,+shipping_methods.*`
-        );
-
-        const order = orderData.order;
-
-        // Crear fulfillment solo con las cantidades realmente pickeadas.
-        // Nunca despachar la cantidad pedida para una línea sin item de sesión.
-        const fulfillmentItems = order.items
-          .map((item: any) => {
-            const sessionItem = items.find(si => si.lineItemId === item.id);
-            const pickedQty = sessionItem ? sessionItem.quantityPicked : 0;
-            return { id: item.id, quantity: pickedQty };
-          })
-          .filter((item: any) => item.quantity > 0);
-
-        // MedusaJS v2 endpoint: POST /admin/orders/:id/fulfillments (plural)
-        const createFulfillment = () =>
-          medusaRequest(`/admin/orders/${orderId}/fulfillments`, {
-            method: 'POST',
-            body: {
-              items: fulfillmentItems,
-            },
-          });
-
-        try {
-          await createFulfillment();
-        } catch (err) {
-          // Las órdenes que no pasaron por el carrito (Mercado Libre, ERP) se
-          // crean sin reserva de inventario, y el fulfillment falla con
-          // "No stock reservation found". Creamos las reservas en Medusa y
-          // reintentamos una vez.
-          const msg = err instanceof Error ? err.message : String(err);
-          if (msg.includes('No stock reservation found')) {
-            console.log('[complete] Sin reserva de stock; creando reservas y reintentando fulfillment');
-            await medusaRequest(`/admin/orders/${orderId}/reserve-inventory`, {
-              method: 'POST',
-            });
-            await createFulfillment();
-          } else {
-            throw err;
-          }
+        // Fulfillment solo con las cantidades realmente pickeadas, descontando
+        // lo ya cumplido en Medusa (reintentos idempotentes). Nunca despachar
+        // la cantidad pedida para una línea sin item de sesión. El reintento
+        // ante "No stock reservation found" (ML/ERP) vive en el helper.
+        const targetByLineItem = new Map<string, number>();
+        for (const si of items) {
+          if (si.quantityPicked > 0) targetByLineItem.set(si.lineItemId, si.quantityPicked);
         }
+        await fulfillRemainingForOrder(orderId, targetByLineItem);
 
         fulfillmentCreated = true;
+        invalidateOrdersCache();
 
         audit({
           action: 'fulfillment_create',
@@ -135,7 +105,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
           userId: user.id,
           orderId,
           orderDisplayId: session.orderDisplayId,
-          details: `Fulfillment creado en Medusa para pedido #${session.orderDisplayId}`,
+          details: hasMissing
+            ? `Fulfillment parcial creado en Medusa para pedido #${session.orderDisplayId} (${totalPickedQty} pickeados, ${totalMissing} faltantes pendientes)`
+            : `Fulfillment creado en Medusa para pedido #${session.orderDisplayId}`,
         });
       } catch (error) {
         // El fulfillment falló: NO completamos la sesión, marcamos el estado como 'failed'
@@ -153,7 +125,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         });
       }
     } else {
-      console.log(`[complete] Hay ${totalMissing} faltantes, no se crea fulfillment hasta que se reciban`);
+      console.log(`[complete] Nada pickeado (${totalMissing} faltantes), no hay fulfillment para crear`);
     }
 
     // Si se intentó crear el fulfillment y falló: NO marcar la sesión como completada.
@@ -212,7 +184,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({
       success: true,
       message: fulfillmentCreated
-        ? 'Picking completado y pedido marcado como preparado'
+        ? (hasMissing
+          ? 'Picking completado: lo pickeado quedó preparado (cumplimiento parcial), faltantes pendientes'
+          : 'Picking completado y pedido marcado como preparado')
         : 'Picking completado (sin items para despachar)',
       sessionId: session.id,
       orderId,

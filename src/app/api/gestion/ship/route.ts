@@ -43,15 +43,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Si ya está shipped o delivered en Medusa, no hacer nada
-    if (['shipped', 'partially_shipped', 'delivered'].includes(fulfillmentStatus)) {
+    // Fulfillments que aún no se despacharon (con cumplimiento parcial un pedido
+    // puede tener más de uno: lo pickeado + los faltantes recibidos).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pendingFulfillments = fulfillments.filter((f: any) => !f.shipped_at && !f.canceled_at);
+
+    // Si ya está shipped o delivered en Medusa y no queda nada por despachar, no
+    // hacer nada. 'partially_shipped' con fulfillments pendientes debe poder
+    // completar el despacho (p. ej. reintento tras un fallo a mitad de camino).
+    if (['shipped', 'partially_shipped', 'delivered'].includes(fulfillmentStatus) && pendingFulfillments.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Este pedido ya fue enviado' },
         { status: 400 }
       );
     }
 
-    if (fulfillments.length === 0) {
+    if (pendingFulfillments.length === 0) {
       return NextResponse.json(
         { success: false, error: 'No hay fulfillments para enviar' },
         { status: 400 }
@@ -89,10 +96,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    // Para envíos normales: crear shipment en Medusa
-    for (const fulfillment of fulfillments) {
-      if (fulfillment.shipped_at) continue;
-
+    // Para envíos normales: crear shipment en Medusa. Si hay más de un
+    // fulfillment (cumplimiento parcial + faltantes recibidos) se despachan
+    // todos juntos, pero el cliente recibe UNA sola notificación de envío.
+    // Si algo ya se despachó antes (reintento), el cliente ya fue notificado.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let alreadyNotified = fulfillments.some((f: any) => !!f.shipped_at);
+    for (const fulfillment of pendingFulfillments) {
       // Medusa v2 requiere items en el body del shipment (usando line_item_id, no fulfillment item id)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const shipmentItems = (fulfillment.items || []).map((item: any) => ({
@@ -104,9 +114,10 @@ export async function POST(req: NextRequest) {
         `/admin/orders/${orderId}/fulfillments/${fulfillment.id}/shipments`,
         {
           method: 'POST',
-          body: { items: shipmentItems },
+          body: { items: shipmentItems, no_notification: alreadyNotified },
         }
       );
+      alreadyNotified = true;
     }
 
     invalidateOrdersCache();
