@@ -16,6 +16,50 @@ export interface FulfillmentItem {
 }
 
 /**
+ * Traduce el "Not enough stock available for item iitem_X at location sloc_Y"
+ * de Medusa a un mensaje accionable para el operario: qué producto (SKU/título),
+ * en qué depósito y cuánto hay disponible/reservado. Si la consulta extra falla,
+ * devuelve null y se conserva el error original.
+ */
+async function humanizeStockError(rawMessage: string): Promise<string | null> {
+  const match = rawMessage.match(
+    /Not enough stock available for item (iitem_\w+) at location (sloc_\w+)/
+  );
+  if (!match) return null;
+  const [, inventoryItemId, locationId] = match;
+
+  try {
+    const [itemData, locationData, levelsData] = await Promise.all([
+      medusaRequest<{ inventory_item: { sku?: string; title?: string } }>(
+        `/admin/inventory-items/${inventoryItemId}`
+      ),
+      medusaRequest<{ stock_location: { name?: string } }>(
+        `/admin/stock-locations/${locationId}`
+      ),
+      medusaRequest<{
+        inventory_levels: {
+          stocked_quantity?: number;
+          reserved_quantity?: number;
+          available_quantity?: number;
+        }[];
+      }>(`/admin/inventory-items/${inventoryItemId}/location-levels?location_id=${locationId}`),
+    ]);
+
+    const item = itemData.inventory_item;
+    const product = [item?.sku, item?.title].filter(Boolean).join(' — ') || inventoryItemId;
+    const location = locationData.stock_location?.name || locationId;
+    const level = levelsData.inventory_levels?.[0];
+    const detail = level
+      ? ` (en stock: ${level.stocked_quantity ?? '?'}, reservado: ${level.reserved_quantity ?? '?'}, disponible: ${level.available_quantity ?? '?'})`
+      : '';
+
+    return `Stock insuficiente de "${product}" en ${location}${detail}. Ajustá el inventario en el admin de Medusa y reintentá.`;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Crea un fulfillment en Medusa con los items dados. No-op si no hay items con
  * cantidad > 0. Reintenta una vez creando reservas si la orden no tenía.
  */
@@ -39,9 +83,11 @@ export async function createFulfillmentForOrder(
     if (msg.includes('No stock reservation found')) {
       await medusaRequest(`/admin/orders/${orderId}/reserve-inventory`, { method: 'POST' });
       await createFulfillment();
-    } else {
-      throw err;
+      return;
     }
+    const humanized = await humanizeStockError(msg);
+    if (humanized) throw new Error(humanized);
+    throw err;
   }
 }
 
