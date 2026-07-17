@@ -46,7 +46,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     }
 
     // La ola se completa solo si ninguna letra quedó con fulfillment fallido.
-    const anyFailed = results.some((r) => r.fulfillmentError);
+    const failed = results.filter((r) => r.fulfillmentError);
+    const anyFailed = failed.length > 0;
     if (!anyFailed) {
       wave.status = 'completed';
       wave.completedAt = new Date();
@@ -64,10 +65,19 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       metadata: { waveId: wave.id, results },
     });
 
+    // Con fallas, el detalle va en 'error' (el front muestra ese campo) para no
+    // dejar al operario con un "Error 200" sin causa.
+    const errorDetail = failed
+      .map((r) => `Pedido #${r.orderDisplayId} (letra ${r.letter}): ${r.fulfillmentError}`)
+      .join(' · ');
+
     return NextResponse.json({
       success: !anyFailed,
       wave: serializeWave(wave),
       results,
+      error: anyFailed
+        ? `No se pudieron despachar ${failed.length} de ${results.length} pedidos — ${errorDetail}. Reintentá el cierre.`
+        : undefined,
       message: anyFailed
         ? 'Algunas letras no se pudieron despachar; reintentá el cierre'
         : 'Ola cerrada: pedidos listos en el flujo de envío',

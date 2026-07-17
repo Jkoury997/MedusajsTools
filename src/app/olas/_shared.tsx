@@ -111,7 +111,7 @@ export async function api<T = unknown>(
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data?.success === false) {
-    throw new Error(data?.error || `Error ${res.status}`);
+    throw new Error(data?.error || data?.message || `Error ${res.status}`);
   }
   return data as T;
 }
