@@ -11,20 +11,77 @@
  * Lo usan los flujos de cierre de picking/ola (complete / wave-complete) y de
  * resolución de faltantes (voucher / receive) para no duplicar la lógica.
  */
-import { medusaRequest } from './medusa';
+import { medusaRequest, getAllPaidOrders } from './medusa';
 
 export interface FulfillmentItem {
   id: string;
   quantity: number;
 }
 
+interface ReservationRecord {
+  id: string;
+  line_item_id?: string | null;
+  inventory_item_id: string;
+  location_id: string;
+  quantity: number;
+  description?: string | null;
+}
+
+/**
+ * Describe QUIÉN tiene reservado el stock del artículo en ese depósito, para
+ * que el operario sepa qué liberar sin adivinar. Cada reserva se mapea a su
+ * pedido vía line_item_id contra el caché de pedidos; las que no matchean con
+ * ningún pedido son reservas sueltas (manuales/ERP) que ningún despacho puede
+ * consumir. Devuelve '' si no hay reservas o si la consulta falla.
+ */
+async function describeBlockingReservations(
+  inventoryItemId: string,
+  locationId: string,
+  orderId: string,
+): Promise<string> {
+  const data = await medusaRequest<{ reservations?: ReservationRecord[] }>(
+    `/admin/reservations?inventory_item_id[]=${inventoryItemId}&location_id[]=${locationId}&limit=100`
+  );
+  const reservations = (data.reservations || []).filter((r) => (Number(r.quantity) || 0) > 0);
+  if (reservations.length === 0) return '';
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let orders: any[] = [];
+  try {
+    orders = await getAllPaidOrders();
+  } catch {
+    // Sin el caché igual informamos las reservas, solo que sin número de pedido.
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const orderByLineId = new Map<string, any>();
+  for (const o of orders) {
+    for (const it of o.items || []) orderByLineId.set(it.id, o);
+  }
+
+  const byHolder = new Map<string, number>();
+  for (const r of reservations) {
+    const order = r.line_item_id ? orderByLineId.get(r.line_item_id) : undefined;
+    const label = order
+      ? order.id === orderId
+        ? `este mismo pedido (#${order.display_id})`
+        : `Pedido #${order.display_id}`
+      : r.description
+        ? `reserva suelta "${r.description}"`
+        : 'reserva suelta sin pedido asociado';
+    byHolder.set(label, (byHolder.get(label) || 0) + (Number(r.quantity) || 0));
+  }
+
+  const parts = [...byHolder.entries()].map(([label, qty]) => `${label}: ${qty}`);
+  return ` Lo reservado lo tiene → ${parts.join(' · ')}.`;
+}
+
 /**
  * Traduce el "Not enough stock available for item iitem_X at location sloc_Y"
  * de Medusa a un mensaje accionable para el operario: qué producto (SKU/título),
- * en qué depósito y cuánto hay disponible/reservado. Si la consulta extra falla,
- * devuelve null y se conserva el error original.
+ * en qué depósito, cuánto hay disponible/reservado y quién tiene las reservas.
+ * Si la consulta extra falla, devuelve null y se conserva el error original.
  */
-async function humanizeStockError(rawMessage: string): Promise<string | null> {
+async function humanizeStockError(rawMessage: string, orderId: string): Promise<string | null> {
   const match = rawMessage.match(
     /Not enough stock available for item (iitem_\w+) at location (sloc_\w+)/
   );
@@ -32,7 +89,7 @@ async function humanizeStockError(rawMessage: string): Promise<string | null> {
   const [, inventoryItemId, locationId] = match;
 
   try {
-    const [itemData, locationData, levelsData] = await Promise.all([
+    const [itemData, locationData, levelsData, holders] = await Promise.all([
       medusaRequest<{ inventory_item: { sku?: string; title?: string } }>(
         `/admin/inventory-items/${inventoryItemId}`
       ),
@@ -46,6 +103,7 @@ async function humanizeStockError(rawMessage: string): Promise<string | null> {
           available_quantity?: number;
         }[];
       }>(`/admin/inventory-items/${inventoryItemId}/location-levels?location_id=${locationId}`),
+      describeBlockingReservations(inventoryItemId, locationId, orderId).catch(() => ''),
     ]);
 
     const item = itemData.inventory_item;
@@ -56,18 +114,10 @@ async function humanizeStockError(rawMessage: string): Promise<string | null> {
       ? ` (en stock: ${level.stocked_quantity ?? '?'}, reservado: ${level.reserved_quantity ?? '?'}, disponible: ${level.available_quantity ?? '?'})`
       : '';
 
-    return `Stock insuficiente de "${product}" en ${location}${detail}. El disponible ya descuenta lo reservado por otros pedidos sin despachar: liberá esas reservas o ajustá el stock en el admin de Medusa y reintentá.`;
+    return `Stock insuficiente de "${product}" en ${location}${detail}.${holders} Liberá las reservas que no correspondan o ajustá el stock en el admin de Medusa y reintentá.`;
   } catch {
     return null;
   }
-}
-
-interface ReservationRecord {
-  id: string;
-  line_item_id?: string | null;
-  inventory_item_id: string;
-  location_id: string;
-  quantity: number;
 }
 
 /** Depósito con más disponible del artículo (para elegir dónde reservar). */
@@ -205,7 +255,8 @@ export async function createFulfillmentForOrder(
     }
 
     const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
-    const humanized = (await humanizeStockError(retryMsg)) || (await humanizeStockError(msg));
+    const humanized =
+      (await humanizeStockError(retryMsg, orderId)) || (await humanizeStockError(msg, orderId));
     if (humanized) throw new Error(humanized);
     throw retryErr instanceof Error ? retryErr : err;
   }
