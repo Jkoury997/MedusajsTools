@@ -213,7 +213,9 @@ export type FulfillmentFilter = 'preparar' | 'enviar' | 'enviados';
 const fulfillmentFilterMap: Record<FulfillmentFilter, string[]> = {
   preparar: ['not_fulfilled', 'partially_fulfilled'],
   enviar: ['fulfilled'],
-  enviados: ['shipped', 'partially_shipped', 'delivered'],
+  // partially_delivered: fulfillment parcial (faltantes) ya entregado — sigue
+  // siendo un pedido enviado; sin él, desaparecía del portal de tienda.
+  enviados: ['shipped', 'partially_shipped', 'delivered', 'partially_delivered'],
 };
 
 // Caché de TODOS los pedidos pagados (120 segundos)
