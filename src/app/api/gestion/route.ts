@@ -4,6 +4,22 @@ import { PickingSession, StoreShipment } from '@/lib/entities';
 import { getAllPaidOrders, isCashPayment, isMercadoLibreOrder } from '@/lib/medusa';
 import { classifyOrder } from '@/lib/shipping';
 
+/**
+ * Precio por unidad realmente PAGADO por el cliente: total de la línea (IVA y
+ * descuentos incluidos) dividido por la cantidad. En pagos en efectivo la
+ * exención pone las tax lines en 0, así que el total ya viene sin IVA — no hay
+ * que special-casear. `unit_price` es el precio base SIN IVA: usarlo para el
+ * voucher subcompensaba a los clientes que pagaron IVA (MP/transferencia).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function paidUnitPrice(medusaItem: any): number {
+  if (!medusaItem) return 0;
+  const qty = Number(medusaItem.quantity);
+  const total = Number(medusaItem.total);
+  if (qty > 0 && Number.isFinite(total)) return total / qty;
+  return medusaItem.unit_price || 0;
+}
+
 // GET /api/gestion?tab=por-preparar|preparados|faltantes|por-enviar|enviados
 export async function GET(req: NextRequest) {
   try {
@@ -136,7 +152,7 @@ export async function GET(req: NextRequest) {
                 quantityRequired: i.quantityRequired,
                 quantityPicked: i.quantityPicked,
                 quantityMissing: remaining,
-                unitPrice: medusaItem?.unit_price || 0,
+                unitPrice: paidUnitPrice(medusaItem),
               };
             }) || [],
         } : null,
