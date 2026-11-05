@@ -5,7 +5,6 @@ import { config as appConfig } from '@/lib/config';
 // La API key solo se acepta en GET: cualquier mutación cae a requerir sesión.
 const API_KEY_PATHS = [
   '/api/stats/',
-  '/api/admin/',
   '/api/picking/audit',
   '/api/picking/users',
   '/api/picking/history',

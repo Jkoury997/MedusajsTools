@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { getOrderById, Order, LineItem, isCashPayment, isMercadoLibreOrder } from '@/lib/medusa';
 import PrintButton from './PrintButton';
-import PickingInterface from './PickingInterface';
 import FaltanteReceiveInterface from './FaltanteReceiveInterface';
 import StoreLabel from './StoreLabel';
 import DeliverButton from './DeliverButton';
@@ -157,7 +156,7 @@ function getItemSize(item: LineItem): string | null {
 }
 
 // Componente de item compacto para IMPRESIÓN - SIN imagen
-function ItemRowPrint({ item, index }: { item: LineItem; index: number }) {
+function ItemRowPrint({ item }: { item: LineItem }) {
   const code = getItemCode(item);
   const barcode = getItemBarcode(item);
   const productName = getProductName(item);
@@ -176,7 +175,7 @@ function ItemRowPrint({ item, index }: { item: LineItem; index: number }) {
   );
 }
 
-function OrderHeader({ order, sortedItems, backUrl }: { order: Order; sortedItems: LineItem[]; backUrl: string }) {
+function OrderHeader({ order, backUrl }: { order: Order; backUrl: string }) {
   const totalItems = order.items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
@@ -195,12 +194,7 @@ function OrderHeader({ order, sortedItems, backUrl }: { order: Order; sortedItem
             <p className="text-xs text-gray-500">{formatDate(order.created_at)}</p>
           </div>
 
-          <PrintButton
-            orderId={order.id}
-            orderDisplayId={order.display_id}
-            orderItems={sortedItems}
-            fulfillmentStatus={order.fulfillment_status || 'not_fulfilled'}
-          />
+          <PrintButton />
         </div>
 
         {/* Stats bar */}
@@ -399,7 +393,7 @@ function CustomerInfo({ order }: { order: Order }) {
 
 export default async function OrderDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params;
-  const { from, type } = await searchParams;
+  const { type } = await searchParams;
 
   // Construir URL de retorno
   const backUrl = '/gestion';
@@ -481,7 +475,7 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
 
   return (
     <div className="min-h-screen pb-6">
-      <OrderHeader order={order} sortedItems={sortedItems} backUrl={backUrl} />
+      <OrderHeader order={order} backUrl={backUrl} />
 
       {/* Banner MERCADO LIBRE — visible solo si la orden viene de ML */}
       {isMercadoLibreOrder(order) && (
@@ -561,8 +555,8 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
               </tr>
             </thead>
             <tbody>
-              {sortedItems.map((item, index) => (
-                <ItemRowPrint key={item.id} item={item} index={index} />
+              {sortedItems.map((item) => (
+                <ItemRowPrint key={item.id} item={item} />
               ))}
             </tbody>
           </table>
@@ -659,16 +653,7 @@ export default async function OrderDetailPage({ params, searchParams }: PageProp
             orderItems={sortedItems}
             manualMode={type === 'manual'}
           />
-        ) : isFulfilledLike ? (
-          /* Pedido ya preparado: vista de despacho (empaque/estado), sin armado */
-          <PickingInterface
-            key={order.id}
-            orderId={order.id}
-            orderDisplayId={order.display_id}
-            orderItems={sortedItems}
-            fulfillmentStatus={fulfillmentStatus}
-          />
-        ) : (
+        ) : isFulfilledLike ? null : (
           /* Armado individual deshabilitado: se prepara por Olas */
           <OlasPickingNotice />
         )}
