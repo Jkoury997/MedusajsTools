@@ -187,14 +187,6 @@ export function isMercadoLibreOrder(order: Order): boolean {
   return order.metadata?.sales_channel === "mercadolibre";
 }
 
-/**
- * Obtiene el ID del envío de ML de una orden.
- * Se usa para descargar la etiqueta de Mercado Envíos.
- */
-export function getMLShipmentId(order: Order): number | null {
-  return order.metadata?.ml_shipment_id ?? null;
-}
-
 export interface OrdersResponse {
   orders: Order[];
   count: number;

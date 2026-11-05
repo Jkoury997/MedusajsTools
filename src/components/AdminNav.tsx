@@ -9,7 +9,6 @@ const LINKS = [
   { href: '/admin/historial', label: 'Historial' },
   { href: '/admin/usuarios', label: 'Usuarios' },
   { href: '/admin/faltantes', label: 'Faltantes' },
-  { href: '/admin/seguridad', label: 'Seguridad' },
 ];
 
 /** Barra de navegación compartida del panel admin. */

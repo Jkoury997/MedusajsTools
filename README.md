@@ -52,7 +52,7 @@ npm run dev
 
 - Sesiones HMAC en cookie httpOnly (picker, tienda y admin).
 - PIN hasheado con HMAC + pepper (migración lazy de los sha256 heredados en el primer login).
-- Roles: las rutas `/api/admin/*`, gestión (mutaciones) y `users` (write) exigen rol admin.
+- Roles: gestión (mutaciones) y `users` (write) exigen rol admin.
 
 ## Scripts
 

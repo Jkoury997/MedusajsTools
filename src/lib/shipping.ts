@@ -52,9 +52,6 @@ export function isFactoryPickup(name?: string): boolean {
 export function isStorePickup(name?: string): boolean {
   return classifyShippingName(name) === 'store_pickup';
 }
-export function isExpressShipping(name?: string): boolean {
-  return classifyShippingName(name) === 'express';
-}
 
 const CATEGORY_LABELS: Record<ShippingCategory, string> = {
   factory_pickup: 'Retiro en Fábrica',
@@ -66,10 +63,6 @@ const CATEGORY_LABELS: Record<ShippingCategory, string> = {
   other: 'Envío',
 };
 
-/** Etiqueta legible de una categoría. */
-export function getCategoryLabel(category: ShippingCategory): string {
-  return CATEGORY_LABELS[category];
-}
 
 /** Etiqueta legible a partir del nombre del método (o null si no se reconoce). */
 export function getShippingLabel(name?: string): string | null {
