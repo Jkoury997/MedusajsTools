@@ -38,7 +38,10 @@ function storeAddrFrom(orders: StoreOrder[]): string {
   return '';
 }
 function isDelivered(o: StoreOrder): boolean {
-  return ['shipped', 'partially_shipped', 'delivered'].includes(o.fulfillment_status);
+  // deliveredAt viene del registro local de entrega: si existe, ya se entregó
+  // (aunque Medusa quede en partially_delivered por un parcial con faltantes).
+  if (o.deliveredAt) return true;
+  return ['shipped', 'partially_shipped', 'delivered', 'partially_delivered'].includes(o.fulfillment_status);
 }
 function itemVariant(it: OrderItem): string {
   const c = it.variant?.metadata?.color; const s = it.variant?.metadata?.size;
